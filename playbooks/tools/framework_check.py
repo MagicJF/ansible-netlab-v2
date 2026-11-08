@@ -637,6 +637,116 @@ def plan_check():
     return 0
 
 
+# ---------------------------------------------------------------------------
+# notas: la nota HTML de cada invitado contra la declaración que la genera
+# ---------------------------------------------------------------------------
+def _patas_de(g, tipo):
+    """Las patas declaradas, leídas por CLAVE y no por posición.
+
+    Una LXC declara la MAC en `hwaddr=` y una VM en `virtio=`; el bootstrap no
+    declara ninguna de las dos. Un patrón con el orden fijo las confunde.
+    """
+    campo = g.get("netif") if tipo == "LXC" else g.get("net")
+    out = []
+    for k, v in (campo or {}).items():
+        d = dict(x.split("=", 1) for x in v.split(",") if "=" in x)
+        out.append({
+            "pata": k,
+            "bridge": d.get("bridge"),
+            "mac": d.get("hwaddr") or d.get("virtio"),
+        })
+    return out
+
+
+_NOTA_FILA = re.compile(
+    r"<tr><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td></tr>")
+
+
+def notas_check():
+    """La nota y las etiquetas de cada invitado, contra la declaración.
+
+    Sin red, sin equipo y sin credenciales. Comprueba lo que la nota CUENTA
+    contra lo que la declaración DICE: es la dirección que ningún verbo puede
+    probar, porque una nota que nombra otro puerto que el declarado sigue siendo
+    HTML perfectamente válido y nadie lo notaría hasta necesitarla.
+
+    Por invitado, seis cosas:
+      1. una fila por pata declarada, con su bridge y su MAC
+      2. en un cable punto a punto, que el vecino nombrado sea el otro extremo
+      3. en el segmento COMPARTIDO (la red de gestión), que NO nombre un vecino
+         único: ahí cuelgan las patas de administración de todos los equipos
+      4. que no se invente una MAC donde la declaración no declara ninguna
+      5. que las etiquetas sean exactamente las tres: quién, qué y dónde
+      6. que ninguna nota se haya quedado con una referencia Jinja sin resolver
+    """
+    say("== notas: la nota de cada invitado contra la declaración ==")
+    man = yaml.safe_load(open(MANIFEST))
+    invitados = ([(c, "LXC", c["hostname"]) for c in man["pve_containers"]]
+                 + [(v, "CHR", v["name"]) for v in man["pve_vms"]])
+
+    cables = {}
+    for g, tipo, nombre in invitados:
+        for p in _patas_de(g, tipo):
+            cables.setdefault(p["bridge"], []).append((nombre, p["pata"], p["mac"]))
+
+    roles = {"pc-": "workstation", "sw-": "switch", "rt-": "router", "fw-": "firewall"}
+    sitio = {"sede1": "central", "sede2": "delegacion", "sede3": "delegacion"}
+
+    def etiquetas_esperadas(nombre):
+        rol = next((r for p, r in roles.items() if nombre.startswith(p)), "bootstrap")
+        sede = next(("sede" + i for i in "123" if "-s%s-" % i in nombre), None)
+        donde = ("borde" if nombre == "fw-wan-edge"
+                 else "infra" if nombre.startswith("infra-")
+                 else sitio.get(sede, "infra"))
+        return sorted(["ansible-managed", rol, donde])
+
+    fallos = []
+    for g, tipo, nombre in sorted(invitados, key=lambda x: x[0]["vmid"]):
+        desc = g.get("description") or ""
+        if "{{" in desc or "{%" in desc:
+            fallos.append(f"{nombre}: la nota se quedó con una referencia Jinja sin resolver")
+        live = sorted(t.strip() for t in (g.get("tags") or []) if t.strip())
+        if live != etiquetas_esperadas(nombre):
+            fallos.append(f"{nombre}: etiquetas {live}, esperadas {etiquetas_esperadas(nombre)}")
+        blk = re.search(r"<b>CONEXIONES</b>\s*<table>(.*?)</table>", desc, re.S)
+        if not blk:
+            fallos.append(f"{nombre}: la nota no tiene tabla de conexiones")
+            continue
+        celdas = _NOTA_FILA.findall(blk.group(1))
+        mias = _patas_de(g, tipo)
+        if len(celdas) != len(mias):
+            fallos.append(f"{nombre}: {len(celdas)} fila(s) en la nota, "
+                          f"{len(mias)} pata(s) declarada(s)")
+        for (pata, _boca, bridge, mac, vecino), p in zip(celdas, mias):
+            b = bridge.replace("<code>", "").replace("</code>", "")
+            n_mac = mac.replace("<code>", "").replace("</code>", "")
+            if b != p["bridge"]:
+                fallos.append(f"{nombre} {pata}: la nota dice {b}, la declaración {p['bridge']}")
+            if (p["mac"] or "—") != n_mac:
+                fallos.append(f"{nombre} {pata}: la nota dice MAC {n_mac}, "
+                              f"la declaración {p['mac'] or 'ninguna'}")
+            patas = cables.get(p["bridge"], [])
+            if len(patas) > 2:
+                if not vecino.startswith("segmento compartido"):
+                    fallos.append(f"{nombre} {pata}: {p['bridge']} lleva {len(patas)} patas "
+                                  f"(segmento compartido) y la nota nombra un vecino único: {vecino!r}")
+            else:
+                otros = [x[0] for x in patas if x[0] != nombre]
+                if len(otros) != 1 or vecino.split()[0] != otros[0]:
+                    fallos.append(f"{nombre} {pata}: la nota dice {vecino!r} y el otro "
+                                  f"extremo es {otros[0] if otros else '—'}")
+
+    for f in fallos:
+        say("  " + f)
+    if fallos:
+        fail(f"{len(fallos)} desacuerdo(s) entre las notas y la declaración")
+    say(f"  {len(invitados)} invitados: una fila por pata, su bridge y su MAC, el vecino "
+        "real de cada cable punto a punto,\n  el segmento de gestión contado como lo que "
+        "es, y las tres etiquetas (quién, qué, dónde).")
+    say("\nPASS: las notas no contradicen a la declaración.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     sub = parser.add_subparsers(dest="mode")
@@ -648,6 +758,7 @@ def main():
     sub.add_parser("agree", help="the check's own map must match the declaration")
     sub.add_parser("export", help="los equipos de red sólo tienen lo que la declaración declara")
     sub.add_parser("plan", help="el plan del rol RouterOS: sin red, sin equipo, sin credenciales")
+    sub.add_parser("notas", help="la nota HTML y las etiquetas de cada invitado, contra la declaración")
     args = parser.parse_args()
 
     if args.mode == "invariant":
@@ -660,6 +771,8 @@ def main():
         return routeros_export()
     if args.mode == "plan":
         return plan_check()
+    if args.mode == "notas":
+        return notas_check()
     parser.print_help()
     return 2
 

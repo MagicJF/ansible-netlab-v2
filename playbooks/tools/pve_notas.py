@@ -104,31 +104,59 @@ def sitio_de(e):
 
 
 # ---------------------------------------------------------------- los cables --
+def patas_de(g, tipo):
+    """Las patas de un invitado, sin depender del ORDEN de las claves.
+
+    El bootstrap declara `name=eth0,bridge=vmbr1,gw=...,ip=...` y no lleva
+    `hwaddr`; un patrón con el orden fijo (`name,bridge,hwaddr`) no lo casaba, y
+    su pata desaparecía de la nota y del recuento del segmento de gestión. Las
+    claves se leen por nombre, no por posición.
+    """
+    campo = g.get("netif") if tipo == "LXC" else g.get("net")
+    out = []
+    for k, v in (campo or {}).items():
+        d = dict(x.split("=", 1) for x in v.split(",") if "=" in x)
+        out.append({
+            "pata": k,
+            "boca": d.get("name") if tipo == "LXC" else "ether%d" % (int(k[3:]) + 1),
+            "bridge": d.get("bridge"),
+            # Una LXC declara la MAC en `hwaddr=`; una VM la declara en `virtio=`
+            # (el modelo de la tarjeta y la MAC en la misma clave).
+            "mac": d.get("hwaddr") or d.get("virtio"),
+        })
+    return out
+
+
 def cables(man):
     """bridge -> [(invitado, netX, nombre de la boca, mac)]"""
     e = {}
-    for g in man["pve_containers"]:
-        for k, v in (g.get("netif") or {}).items():
-            m = re.search(r"hwaddr=(\S+?),bridge=(\S+)", v)
-            ni = re.search(r"name=(\S+?),", v)
-            if m:
-                e.setdefault(m.group(2), []).append(
-                    (g["hostname"], k, ni.group(1) if ni else k, m.group(1)))
-    for g in man["pve_vms"]:
-        for k, v in (g.get("net") or {}).items():
-            m = re.search(r"virtio=(\S+),bridge=(\S+)", v)
-            if m:
-                # RouterOS nombra sus bocas ether1..etherN en el orden del hipervisor.
-                e.setdefault(m.group(2), []).append(
-                    (g["name"], k, "ether%d" % (int(k[3:]) + 1), m.group(1)))
+    todos_los = ([(c, "LXC", c["hostname"]) for c in man["pve_containers"]]
+                 + [(v, "CHR", v["name"]) for v in man["pve_vms"]])
+    for g, tipo, nombre in todos_los:
+        for p in patas_de(g, tipo):
+            e.setdefault(p["bridge"], []).append((nombre, p["pata"], p["boca"], p["mac"]))
     return e
 
 
 CABLES = cables(man)
 
 
-def otras_puntas(nombre, bridge):
-    return [x for x in CABLES.get(bridge, []) if x[0] != nombre]
+def punta_de(nombre, bridge):
+    """Quién hay al otro extremo de un cable.
+
+    En un cable punto a punto es un nombre concreto, y la nota lo nombra. En un
+    SEGMENTO compartido —la red de gestión, a la que se enchufan las patas de
+    administración de todos los equipos de red— no hay "otro extremo": nombrar
+    uno solo de los doce sería mentir, y la nota presentaría un cable directo
+    que no existe. Ahí se dice lo que es.
+    """
+    patas = CABLES.get(bridge, [])
+    otras = [x for x in patas if x[0] != nombre]
+    if len(patas) > 2:
+        return "segmento compartido (%d patas)" % len(patas)
+    if not otras:
+        return "—"
+    return "%s %s" % (otras[0][0], otras[0][2])
 
 
 # ------------------------------------------------------------- el camino ------
@@ -227,28 +255,27 @@ def html(e):
     A("")
     A("<b>CONEXIONES</b>")
     filas = []
-    if e["tipo"] == "LXC":
-        for k, v in (g.get("netif") or {}).items():
-            m = re.search(r"name=(\S+?),bridge=(\S+),hwaddr=(\S+?),(.*)", v)
-            if m:
-                pares = otras_puntas(n, m.group(2))
-                peer = ("%s %s" % (pares[0][0], pares[0][2])) if pares else "—"
-                filas.append([k, m.group(1), "<code>%s</code>" % m.group(2),
-                              "<code>%s</code>" % m.group(3), peer])
-    else:
-        for k, v in (g.get("net") or {}).items():
-            m = re.search(r"virtio=(\S+),bridge=(\S+)", v)
-            if m:
-                boca = "ether%d" % (int(k[3:]) + 1)
-                pares = otras_puntas(n, m.group(2))
-                peer = ("%s %s" % (pares[0][0], pares[0][2])) if pares else "—"
-                filas.append([k, boca, "<code>%s</code>" % m.group(2),
-                              "<code>%s</code>" % m.group(1), peer])
+    sus_bridges = []
+    for p in patas_de(g, e["tipo"]):
+        sus_bridges.append(p["bridge"])
+        filas.append([p["pata"], p["boca"], "<code>%s</code>" % p["bridge"],
+                      "<code>%s</code>" % p["mac"] if p["mac"] else "—",
+                      punta_de(n, p["bridge"])])
     L += tabla(filas, ["Pata", "Interfaz", "Cable (bridge)", "MAC", "Al otro extremo"])
     A("")
-    A("Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de "
-      "capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado "
-      "sabe quién está al otro lado: lo aprende, igual que el hardware real.")
+    compartidos = [b for b in sus_bridges if len(CABLES.get(b, [])) > 2]
+    if compartidos:
+        A("Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de "
+          "capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> "
+          "(<code>%s</code>), donde no hay un \"otro extremo\" único: ahí cuelgan las "
+          "patas de administración de todos los equipos de red. Sus demás cables son "
+          "punto a punto, con exactamente dos patas. Nada en el invitado sabe quién "
+          "está al otro lado: lo aprende, igual que el hardware real."
+          % ", ".join(compartidos))
+    else:
+        A("Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de "
+          "capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado "
+          "sabe quién está al otro lado: lo aprende, igual que el hardware real.")
 
     # --- direccionamiento / configuración
     A("")

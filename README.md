@@ -513,7 +513,7 @@ Two measurement traps, both hit for real while building this:
 
 ## Checking the framework itself
 
-Five checks exist, and each answers a question the others cannot.
+Six checks exist, and each answers a question the others cannot.
 
 **The declared state has to make sense as a whole.** `filter_plugins/state.py`
 validates the manifest's cross-references — that a RouterOS interface exists,
@@ -559,6 +559,16 @@ is accepted — so "the right rules" is not enough: they have to be created in t
 right order. It is the one check that can always run, and it is what the rules
 come out in order *because of*.
 
+**Does the note still tell the truth?** `framework_check.py notas` needs no lab
+either. The note in the PVE interface is HTML and is *generated* from the
+declaration (`pve_notas.py`), so the check reads both and requires they agree: one
+row per declared leg with its bridge and its MAC, the real neighbour on every
+point-to-point cable, the shared management segment described as a shared segment
+instead of naming one neighbour out of twelve, and exactly the three tags (who
+manages it, what it is, where it is). Nothing else can catch this class of error:
+a note that names the wrong port is still perfectly valid HTML, and it is only
+read the day someone trusts it.
+
 **`ansible-lint` stays green.** `.ansible-lint` forces the rules that matter and
 records why each of the others is skipped. A linter with standing findings teaches
 you to ignore it, which is worse than not running one. It is a convention ratchet,
@@ -568,6 +578,7 @@ not catch the class of bug that actually costs a run here.
 ```
 ansible-lint
 python3 playbooks/tools/framework_check.py plan
+python3 playbooks/tools/framework_check.py notas
 python3 playbooks/tools/framework_check.py invariant --verb configure/site.yml
 python3 playbooks/tools/framework_check.py drill
 ```

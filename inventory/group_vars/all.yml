@@ -318,9 +318,10 @@ pve_containers:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
+       <tr><td>net0</td><td>eth0</td><td><code>vmbr1</code></td><td>—</td><td>segmento compartido (12 patas)</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CÓMO ESTÁ DIRIGIDA</b>
       <table>
@@ -949,14 +950,14 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:31:01</code></td><td>sw-s1-acc-02 ether1</td></tr>
-       <tr><td>net1</td><td>ether2</td><td><code>vmbr4</code></td><td><code>BC:24:11:00:31:02</code></td><td>—</td></tr>
-       <tr><td>net2</td><td>ether3</td><td><code>vmbr5</code></td><td><code>BC:24:11:00:31:03</code></td><td>—</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:31:01</code></td><td>segmento compartido (12 patas)</td></tr>
+       <tr><td>net1</td><td>ether2</td><td><code>vmbr4</code></td><td><code>BC:24:11:00:31:02</code></td><td>pc-s1-01 eth0</td></tr>
+       <tr><td>net2</td><td>ether3</td><td><code>vmbr5</code></td><td><code>BC:24:11:00:31:03</code></td><td>pc-s1-02 eth0</td></tr>
        <tr><td>net3</td><td>ether4</td><td><code>vmbr8</code></td><td><code>BC:24:11:00:31:04</code></td><td>sw-s1-acc-02 ether4</td></tr>
        <tr><td>net4</td><td>ether5</td><td><code>vmbr9</code></td><td><code>BC:24:11:00:31:05</code></td><td>rt-s1-core ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1026,13 +1027,13 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:32:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
-       <tr><td>net1</td><td>ether2</td><td><code>vmbr6</code></td><td><code>BC:24:11:00:32:02</code></td><td>—</td></tr>
-       <tr><td>net2</td><td>ether3</td><td><code>vmbr7</code></td><td><code>BC:24:11:00:32:03</code></td><td>—</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:32:01</code></td><td>segmento compartido (12 patas)</td></tr>
+       <tr><td>net1</td><td>ether2</td><td><code>vmbr6</code></td><td><code>BC:24:11:00:32:02</code></td><td>pc-s1-03 eth0</td></tr>
+       <tr><td>net2</td><td>ether3</td><td><code>vmbr7</code></td><td><code>BC:24:11:00:32:03</code></td><td>pc-s1-04 eth0</td></tr>
        <tr><td>net3</td><td>ether4</td><td><code>vmbr8</code></td><td><code>BC:24:11:00:32:04</code></td><td>sw-s1-acc-01 ether4</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1096,13 +1097,13 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:33:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
-       <tr><td>net1</td><td>ether2</td><td><code>vmbr14</code></td><td><code>BC:24:11:00:33:02</code></td><td>—</td></tr>
-       <tr><td>net2</td><td>ether3</td><td><code>vmbr15</code></td><td><code>BC:24:11:00:33:03</code></td><td>—</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:33:01</code></td><td>segmento compartido (12 patas)</td></tr>
+       <tr><td>net1</td><td>ether2</td><td><code>vmbr14</code></td><td><code>BC:24:11:00:33:02</code></td><td>pc-s2-01 eth0</td></tr>
+       <tr><td>net2</td><td>ether3</td><td><code>vmbr15</code></td><td><code>BC:24:11:00:33:03</code></td><td>pc-s2-02 eth0</td></tr>
        <tr><td>net3</td><td>ether4</td><td><code>vmbr16</code></td><td><code>BC:24:11:00:33:04</code></td><td>rt-s2-edge ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1166,13 +1167,13 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:34:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
-       <tr><td>net1</td><td>ether2</td><td><code>vmbr18</code></td><td><code>BC:24:11:00:34:02</code></td><td>—</td></tr>
-       <tr><td>net2</td><td>ether3</td><td><code>vmbr19</code></td><td><code>BC:24:11:00:34:03</code></td><td>—</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:34:01</code></td><td>segmento compartido (12 patas)</td></tr>
+       <tr><td>net1</td><td>ether2</td><td><code>vmbr18</code></td><td><code>BC:24:11:00:34:02</code></td><td>pc-s3-01 eth0</td></tr>
+       <tr><td>net2</td><td>ether3</td><td><code>vmbr19</code></td><td><code>BC:24:11:00:34:03</code></td><td>pc-s3-02 eth0</td></tr>
        <tr><td>net3</td><td>ether4</td><td><code>vmbr20</code></td><td><code>BC:24:11:00:34:04</code></td><td>rt-s3-edge ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1246,12 +1247,12 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:21:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:21:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr9</code></td><td><code>BC:24:11:00:21:02</code></td><td>sw-s1-acc-01 ether5</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr10</code></td><td><code>BC:24:11:00:21:03</code></td><td>fw-s1-perim ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1360,12 +1361,12 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:22:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:22:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr16</code></td><td><code>BC:24:11:00:22:02</code></td><td>sw-s2-acc-01 ether4</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr17</code></td><td><code>BC:24:11:00:22:03</code></td><td>fw-s2-perim ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1461,12 +1462,12 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:23:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:23:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr20</code></td><td><code>BC:24:11:00:23:02</code></td><td>sw-s3-acc-01 ether4</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr21</code></td><td><code>BC:24:11:00:23:03</code></td><td>fw-s3-perim ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1572,14 +1573,14 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:41:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:41:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr10</code></td><td><code>BC:24:11:00:41:02</code></td><td>rt-s1-core ether3</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr11</code></td><td><code>BC:24:11:00:41:03</code></td><td>fw-s2-perim ether3</td></tr>
        <tr><td>net3</td><td>ether4</td><td><code>vmbr12</code></td><td><code>BC:24:11:00:41:04</code></td><td>fw-s3-perim ether3</td></tr>
        <tr><td>net4</td><td>ether5</td><td><code>vmbr13</code></td><td><code>BC:24:11:00:41:05</code></td><td>fw-wan-edge ether2</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1706,12 +1707,12 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:42:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:42:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr17</code></td><td><code>BC:24:11:00:42:02</code></td><td>rt-s2-edge ether3</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr11</code></td><td><code>BC:24:11:00:42:03</code></td><td>fw-s1-perim ether3</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1802,12 +1803,12 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:43:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:43:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr21</code></td><td><code>BC:24:11:00:43:02</code></td><td>rt-s3-edge ether3</td></tr>
        <tr><td>net2</td><td>ether3</td><td><code>vmbr12</code></td><td><code>BC:24:11:00:43:03</code></td><td>fw-s1-perim ether4</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
@@ -1900,11 +1901,11 @@ pve_vms:
       <b>CONEXIONES</b>
       <table>
        <tr><th>Pata</th><th>Interfaz</th><th>Cable (bridge)</th><th>MAC</th><th>Al otro extremo</th></tr>
-       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:49:01</code></td><td>sw-s1-acc-01 ether1</td></tr>
+       <tr><td>net0</td><td>ether1</td><td><code>vmbr1</code></td><td><code>BC:24:11:00:49:01</code></td><td>segmento compartido (12 patas)</td></tr>
        <tr><td>net1</td><td>ether2</td><td><code>vmbr13</code></td><td><code>BC:24:11:00:49:02</code></td><td>fw-s1-perim ether5</td></tr>
       </table>
       
-      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2 al que se enchufan exactamente estas dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
+      Cada cable es un <b>bridge de Proxmox sin puerto físico</b>: un segmento de capa 2. Este invitado tiene una pata en un <b>segmento compartido</b> (<code>vmbr1</code>), donde no hay un "otro extremo" único: ahí cuelgan las patas de administración de todos los equipos de red. Sus demás cables son punto a punto, con exactamente dos patas. Nada en el invitado sabe quién está al otro lado: lo aprende, igual que el hardware real.
       
       <b>CONFIGURACIÓN DECLARADA (RouterOS)</b>
       <table>
