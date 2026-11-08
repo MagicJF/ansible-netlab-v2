@@ -30,6 +30,13 @@ noticing, because a regression in either one still produces a green run:
 
 Run it from anywhere:  python3 playbooks/tools/framework_check.py invariant
                        python3 playbooks/tools/framework_check.py drill
+
+  `plan` es la única que no necesita el laboratorio: renderiza la plantilla del
+  plan del rol RouterOS y comprueba, equipo por equipo, que crea las reglas en
+  el ORDEN declarado, que no propone nada cuando ya está convergido, que borra
+  solo lo que sobra y que no toca lo que el propio equipo creó. Se puede correr
+  siempre — es la que protege el único sitio donde el orden decide el
+  comportamiento.
 """
 
 import argparse
@@ -496,6 +503,140 @@ def routeros_export():
     return 0
 
 
+# ---------------------------------------------------------------------------
+# plan: la lógica del plan del rol RouterOS, probada SIN tocar ningún equipo
+# ---------------------------------------------------------------------------
+_PLAN_CAMPOS = ("chain", "action", "in-interface", "out-interface", "connection-state")
+
+
+def _plan_firma(regla):
+    """Firma de una regla, con las claves normalizadas: la DECLARACIÓN las
+    escribe en snake_case (`in_interface`) y el plan las emite en kebab-case
+    (`in-interface`), así que hay que compararlas ya traducidas."""
+    normal = {k.replace("_", "-"): v for k, v in regla.items()}
+    return tuple(normal.get(c) for c in _PLAN_CAMPOS)
+
+
+def plan_check():
+    """El plan del rol RouterOS, probado sin red, sin credenciales y sin equipo.
+
+    Renderiza la MISMA plantilla que usa el rol (`plan.j2`, no una copia) y
+    comprueba, sobre los once equipos de red declarados, cuatro cosas:
+
+      1. Equipo VACÍO      — el plan crea exactamente las reglas declaradas, y
+                             **en el orden declarado**. El filtrado es
+                             posicional: un plan que las creara desordenadas
+                             dejaría un firewall que filtra otra cosa.
+      2. Ya CONVERGIDO     — el plan sale vacío. Es la idempotencia, la
+                             propiedad que nadie nota cuando se pierde.
+      3. Una regla SOBRANTE— se borra solo esa, y no se toca ninguna otra.
+      4. Una regla DINÁMICA (creada por el propio equipo) — ni se toca.
+
+    Es la comprobación que se puede correr siempre, y la que protege el único
+    sitio de este laboratorio donde el orden decide el comportamiento.
+    """
+    import copy
+
+    import jinja2
+
+    man = yaml.safe_load(open(MANIFEST))
+    defaults = yaml.safe_load(open(ROUTEROS_DEFAULTS))
+    plantilla = os.path.join(REPO, "configure/roles/routeros/templates/plan.j2")
+
+    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    # `flatten`, `to_json` y `from_json` son filtros de Ansible, no de Jinja2
+    # puro, y el plan los usa. Se replican para poder renderizar la plantilla tal
+    # cual la usa el rol, sin sacarla de su sitio.
+    env.filters["flatten"] = lambda x: [i for s in x for i in (s if isinstance(s, list) else [s])]
+    env.filters["to_json"] = lambda x: json.dumps(x)
+    env.filters["from_json"] = lambda x: json.loads(x)
+    tpl = env.from_string(open(plantilla).read())
+
+    ctx = dict(man)
+    ctx["routeros_disabled_services"] = defaults["routeros_disabled_services"]
+
+    def declarado(equipo):
+        g = [v for v in man["pve_vms"] if v["name"] == equipo][0]
+        limpio = copy.deepcopy(g["config"]["routeros"])
+        # El bloque `leases` lleva una sustitución de regex que aqui no hace
+        # falta (no probamos DHCP) y que Jinja no debe compilar.
+        for srv in limpio.get("dhcp_servers") or []:
+            srv.pop("leases", None)
+        return json.loads(env.from_string(json.dumps(limpio)).render(**ctx))
+
+    def plan(ros, cfg, identidad=""):
+        return json.loads(tpl.render(l2_config={"routeros": cfg}, ros=ros,
+                                     ros_identity_name=identidad, **ctx))
+
+    def vivo(cfg, extra=None):
+        """Lo que un equipo ya convergido respondería, en kebab-case."""
+        v = {"identity": {"name": cfg["identity"]}}
+        for menu, clave in (("filter", "firewall_filter"), ("nat", "firewall_nat")):
+            filas = []
+            for i, r in enumerate((cfg.get("firewall") or {}).get(menu) or []):
+                fila = {"chain": r["chain"], "action": r["action"],
+                        ".id": "*%s%d" % (clave[-1], i)}
+                for origen, destino in (("connection_state", "connection-state"),
+                                        ("in_interface", "in-interface"),
+                                        ("out_interface", "out-interface")):
+                    if origen in r:
+                        fila[destino] = r[origen]
+                filas.append(fila)
+            v[clave] = filas
+        if extra:
+            v["firewall_filter"] = v["firewall_filter"] + extra
+        return v
+
+    vacias = {k: [] for k in ("identity", "services", "bridges", "bridge_ports", "addresses",
+                              "routes", "firewall_filter", "firewall_nat", "dhcp_clients",
+                              "pools", "dhcp_servers", "dhcp_networks", "dhcp_leases")}
+    equipos = [v["name"] for v in man["pve_vms"]]
+    fallos = []
+
+    say("El plan del rol RouterOS, renderizado con la plantilla del rol (%d equipos)"
+        % len(equipos))
+    for equipo in equipos:
+        cfg = declarado(equipo)
+        filtro = (cfg.get("firewall") or {}).get("filter") or []
+        nat = (cfg.get("firewall") or {}).get("nat") or []
+        ops = lambda p: [o for o in p if "firewall" in o["path"]]  # noqa: E731
+
+        # 1) vacio: crea todo, y en el orden declarado
+        p1 = ops(plan(copy.deepcopy(vacias), cfg))
+        if len(p1) != len(filtro) + len(nat):
+            fallos.append("%s: equipo vacio -> %d llamadas, esperaba %d"
+                          % (equipo, len(p1), len(filtro) + len(nat)))
+        else:
+            creadas = [_plan_firma(o["body"]) for o in p1 if "filter" in o["path"]]
+            if creadas != [_plan_firma(r) for r in filtro]:
+                fallos.append("%s: no crea las reglas en el ORDEN declarado" % equipo)
+
+        # 2) convergido: no debe proponer nada
+        p2 = ops(plan(dict(vacias) | vivo(cfg), cfg, identidad=cfg["identity"]))
+        if p2:
+            fallos.append("%s: no es idempotente -> %s" % (equipo, json.dumps(p2)))
+
+        # 3) una sobrante, y una dinamica que no es nuestra
+        sucio = dict(vacias) | vivo(cfg, extra=[{"chain": "input", "action": "accept",
+                                                 ".id": "*dyn", "dynamic": "true"}])
+        sucio["firewall_filter"] = sucio["firewall_filter"] + [
+            {"chain": "forward", "action": "accept", ".id": "*sobra"}]
+        p3 = ops(plan(sucio, cfg, identidad=cfg["identity"]))
+        if len(p3) != 1 or p3[0]["method"] != "DELETE" \
+                or p3[0]["path"] != "ip/firewall/filter/*sobra":
+            fallos.append("%s: no borra solo lo que sobra -> %s" % (equipo, json.dumps(p3)))
+
+        say("  %-14s %2d de filtrado, %d de NAT: crea en orden, idempotente y limpia la sobrante"
+            % (equipo, len(filtro), len(nat)))
+
+    if fallos:
+        fail("el plan del rol RouterOS:\n  - " + "\n  - ".join(fallos))
+    say("\nPASS: el plan crea en orden, no propone nada cuando ya esta, borra solo lo")
+    say("      sobrante y no toca lo dinamico. Sin red ni credenciales: %d equipos."
+        % len(equipos))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     sub = parser.add_subparsers(dest="mode")
@@ -506,6 +647,7 @@ def main():
     drl.add_argument("--preflight", default="playbooks/preflight.yml")
     sub.add_parser("agree", help="the check's own map must match the declaration")
     sub.add_parser("export", help="los equipos de red sólo tienen lo que la declaración declara")
+    sub.add_parser("plan", help="el plan del rol RouterOS: sin red, sin equipo, sin credenciales")
     args = parser.parse_args()
 
     if args.mode == "invariant":
@@ -516,6 +658,8 @@ def main():
         return agree()
     if args.mode == "export":
         return routeros_export()
+    if args.mode == "plan":
+        return plan_check()
     parser.print_help()
     return 2
 
