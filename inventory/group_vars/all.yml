@@ -58,7 +58,7 @@ pve_node: Proxmox
 # direcciones de gestión se asignan por BLOQUES DE FUNCIÓN.
 #
 #   10.10.10.1      el host Proxmox (NO es nuestro; es el gateway)
-#   10.10.10.2      caddy (invitado preexistente, AJENO a este repositorio)
+#   10.10.10.2      un invitado preexistente, AJENO a este repositorio
 #   10.10.10.11-19  switches      (ST = 13/23/33)
 #   10.10.10.21-29  routers       (ST = 12/22/32)
 #   10.10.10.31-39  firewalls     (ST = 11/21/31, y el de borde 91)
@@ -1037,10 +1037,11 @@ pve_vms:
 # ============================================================================
 # NOTA: no hay lista de "invitados parcialmente adoptados".
 #
-# La v1 traía `pve_config_targets` con el caddy (101) dentro. Aquí no existe:
-# ese invitado es AJENO a este repositorio y no aparece en ninguna lista. Si
-# algún día hay que configurar un invitado preexistente desde capa 2, se
-# declara aquí y se explica por qué.
+# La v1 traía una lista de invitados "parcialmente adoptados" (los que
+# configuraba sin gestionarles la forma). Aquí no existe: todo invitado que se
+# configura se declara también, y el que no se declara no aparece en ninguna
+# lista ni se lee nunca. Si algún día hay que configurar uno preexistente desde
+# capa 2, se declara aquí y se explica por qué.
 # ============================================================================
 
 # ============================================================================

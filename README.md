@@ -7,33 +7,38 @@ Declarative IaC for the LXC containers and QEMU VMs on Proxmox VE, driven entire
 ## El laboratorio: una empresa de tres sedes
 
 Lo que este repositorio despliega es un laboratorio de red que simula **una
-empresa con una central y dos delegaciones**: ocho workstations, siete equipos de
-red MikroTik (RouterOS) y los cables que los unen, todo declarado en un solo
-fichero y gobernado **exclusivamente por la API**.
+empresa con una central y dos delegaciones**: ocho workstations, **once equipos
+de red** MikroTik (RouterOS) —cuatro switches, tres routers y cuatro firewalls—
+y los cables que los unen, todo declarado en un solo fichero y gobernado
+**exclusivamente por la API**.
 
 ```
-        SEDE 1 — LA CENTRAL                    SEDE 2                 SEDE 3
-   ┌──────────────────────────────────┐   ┌───────────────┐    ┌───────────────┐
-   │   ws1     ws2      ws3     ws4   │   │   ws5    ws6  │    │   ws7    ws8  │
-   │    │       │        │       │    │   │    │       │  │    │    │       │  │
-   │  ether2 ether3   ether4 ether5   │   │ ether2 ether3 │    │ ether2 ether3 │
-   │    └───┬───┴────────┴───────┘    │   │    └──┬───┘   │    │    └──┬───┘   │
-   │       sw1 ══════════ sw2         │   │      sw3      │    │      sw4      │
-   │        │          (troncal)      │   │       │       │    │       │       │
-   │        │                         │   │       │       │    │       │       │
-   │       rt1 ───────────────────────┼───┼───── rt2      │    │       │       │
-   │        │                         │   │               │    │       │       │
-   │        └─────────────────────────┼───┼───────────────┼────┼────── rt3     │
-   └──────────────────────────────────┘   └───────────────┘    └───────────────┘
+        SEDE 1 — LA CENTRAL                      SEDE 2                SEDE 3
+   ┌──────────────────────────────────┐    ┌───────────────┐    ┌───────────────┐
+   │  pc-s1-01..04 (cuatro PCs)       │    │  pc-s2-01/02  │    │  pc-s3-01/02  │
+   │       │        │                 │    │      │        │    │       │       │
+   │  sw-s1-acc-01 ═══ sw-s1-acc-02   │    │ sw-s2-acc-01  │    │ sw-s3-acc-01  │
+   │       │       (troncal)          │    │      │        │    │       │       │
+   │       └───────────┬──────────────│    │      │        │    │       │       │
+   │             rt-s1-core           │    │  rt-s2-edge   │    │  rt-s3-edge   │
+   │                   │              │    │      │        │    │       │       │
+   │             fw-s1-perim ─────────┼────┼─ fw-s2-perim  │    │  fw-s3-perim  │
+   │                   │              │    │               │    │       │       │
+   │             fw-wan-edge ────▶ internet (NAT)          │    │       │       │
+   └──────────────────────────────────┘    └───────────────┘    └───────────────┘
                                         ╰── WAN 1 ──╯  ╰───── WAN 2 ─────╯
 ```
 
-En una frase: **cuatro switches y tres routers** RouterOS. Los switches lo son
-por su configuración —sus patas de datos van a un puente sin dirección, que es
-lo que los distingue de un router—, las **ocho workstations no tienen ninguna vía
-de gestión** (una sola interfaz, dirección por DHCP, como un PC de verdad), y la
-red se verifica **desde dentro de los propios routers**, que es como lo haría un
-ingeniero.
+En una frase: **cuatro switches, tres routers y cuatro firewalls** RouterOS, y el
+camino de un paquete dentro de una sede es **`pc → sw → rt → fw → WAN`**. Los
+switches lo son por su configuración (patas de datos en un puente sin dirección,
+lo que los distingue de un router). **El router es la puerta y el servidor DHCP de
+su LAN**, no el switch ni el firewall: el DHCP es una difusión de capa 2, así que
+quien reparte las direcciones tiene que estar en el mismo segmento que sus
+clientes. Los firewalls **filtran el perímetro** y sólo el de borde hace **NAT**.
+Las **ocho workstations no tienen ninguna vía de gestión** (una sola interfaz,
+dirección por DHCP, como un PC de verdad), y la red se verifica **desde dentro de
+los propios equipos**, que es como lo haría un ingeniero.
 
 **Guía completa, en castellano: [`EL-LABORATORIO.md`](EL-LABORATORIO.md)** — la
 topología explicada, el direccionamiento, por dónde va un paquete, las dos capas
@@ -119,17 +124,24 @@ suspect drift, not as a routine step — see [Performance and how to iterate fas
 
 ## Declared state
 
-`inventory/group_vars/all.yml` holds `pve_node`, a `pve_defaults` block, and `pve_containers`: **the only containers this repository manages**. A container absent from that list is never read, created or modified — the pre-existing guests `100` and `105` are deliberately out of scope. Every key of `pve_defaults` can be overridden per container.
+`inventory/group_vars/all.yml` holds `pve_node`, a `pve_defaults` block, `pve_containers` (the LXC guests) and `pve_vms` (the RouterOS CHR guests): **the only guests this repository manages**. A guest absent from those lists is never read, created or modified. Every key of `pve_defaults` can be overridden per guest.
 
-| vmid | hostname | cores | memory | swap | rootfs | status | what it is |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 167 | `ct-forge-5f2a` | 5 | 2560 MiB | 896 MiB | 7 GiB | started | pre-existing, adopted. On the **public** bridge, no layer 2 |
-| 131 | `wiki-tiddly` | 1 | 1024 MiB | 512 MiB | 6 GiB | started | the worked TiddlyWiki example below |
-| 141 | `ws1` | 1 | 512 MiB | 256 MiB | 6 GiB | started | workstation 1 of the connectivity lab |
-| 142 | `ws2` | 1 | 512 MiB | 256 MiB | 6 GiB | started | workstation 2 of the connectivity lab |
-| 143 | `lab-bootstrap` | 1 | 1024 MiB | 256 MiB | 4 GiB | started | the routers' first address, and the SSH path into the sites |
+The v2 lab is **twenty guests** — nine containers and eleven CHR VMs — numbered `STNN` (site, type, index):
 
-`pve_config_targets` is a separate, shorter list: guests whose **shape** this repository does not manage but whose **inside** it does. `101` (`caddy`, `10.10.10.2`) sits there with `manage: false`, so layer 2 inspects it and changes nothing. A guest belongs in one list or the other and never both — the state validator refuses an entry that is in the two.
+| vmid | hostname | what it is |
+| --- | --- | --- |
+| 1401-1404 | `pc-s1-01`…`pc-s1-04` | the central's four workstations (LXC: 1 vCPU / 256 MiB / 4 GiB) |
+| 2401-2402 | `pc-s2-01`, `pc-s2-02` | the branch-2 workstations |
+| 3401-3402 | `pc-s3-01`, `pc-s3-02` | the branch-3 workstations |
+| 901 | `infra-bootstrap` | hands each network device its **first** address, once |
+| 1301, 1302 | `sw-s1-acc-01`, `sw-s1-acc-02` | the central's two access switches, joined by a trunk |
+| 2301 | `sw-s2-acc-01` | the branch-2 switch |
+| 3301 | `sw-s3-acc-01` | the branch-3 switch |
+| 1201, 2201, 3201 | `rt-s1-core`, `rt-s2-edge`, `rt-s3-edge` | the routers: LAN gateway **and DHCP server** |
+| 1101, 2101, 3101 | `fw-s1-perim`, `fw-s2-perim`, `fw-s3-perim` | the site perimeters: filtering |
+| 9101 | `fw-wan-edge` | the border firewall: filtering **and NAT** |
+
+The v1 manifest carried a second list, `pve_config_targets`: guests whose **shape** it did not manage but whose **inside** it did. **The v2 has no such list** — every guest it configures is one it also declares. Anything the v1 adopted is out of the declaration entirely, so convergence never reads, creates or modifies it.
 
 Declared per container, inherited from `pve_defaults` unless overridden:
 
@@ -207,7 +219,7 @@ The methodology, in one line per rule:
 
 - **One declared state, two layers.** `inventory/group_vars/all.yml` stays the single source of truth: layer 1 reads the guest's shape, layer 2 reads the guest's `config:` block. Addresses are never duplicated — layer 2 derives the SSH target from the interface declaration with the `pve_declared_ipv4` filter, or from the guest's own `address:` when its NIC is DHCP.
 - **A guest is configured over the protocol it speaks.** Most guests are Linux, so layer 2 reaches them over SSH. A RouterOS guest is not a POSIX shell — SSH lands in its own CLI — so it declares `config.routeros` and is converged over its **REST API** with `ansible.builtin.uri`, from the control node, with no SSH involved. The target's `kind` (`ssh` or `api`) is derived from which block the guest declares, and each kind gets its own play, because the two cannot share a connection.
-- **A guest may have no `config:` at all.** `ws1` and `ws2` in the lab below declare only a shape: they are PCs whose inside nobody configures, so they are not layer-2 targets. What they need — an address — comes from the router, and the router declares it.
+- **A guest may have no `config:` at all.** `pc-s1-01` and `pc-s1-02` in the lab below declare only a shape: they are PCs whose inside nobody configures, so they are not layer-2 targets. What they need — an address — comes from the router, and the router declares it.
 - **Read before you write.** `configure/audit.yml` inspects a guest and changes nothing. Run it before declaring `manage: true` on a guest that already exists.
 - **Convergence is opt-in per guest.** A `config:` block plus `manage: true` means layer 2 owns the inside; `manage: false` (or absent) means audit only. A guest is never configured by accident.
 - **Each layer verifies what it declares.** Layer 1 re-reads through the API. Layer 2 validates inside the guest (`caddy validate`, `systemctl is-active`, the timers) *and* from outside (an HTTP request asserting the declared status and body).
@@ -276,8 +288,8 @@ Adding another application means another role under `configure/roles/` and anoth
 
 ### A worked example: a TiddlyWiki server
 
-`pve_containers` declares VMID 131 `wiki-tiddly` (1 vCPU / 1024 MiB / 6 GiB, static
-`10.10.10.31/24` on the LAN bridge, `manage: true`) with:
+A guest that declares a TiddlyWiki instance (this is the framework's layer-2
+capability, **not** a guest of the current lab — the v2 declares none) carries:
 
 ```yaml
     config:
@@ -322,25 +334,40 @@ and it is there to exercise the framework on something that is **not** a flat
 list of identical guests:
 
 ```text
-SEDE 1 (central)             SEDE 2                   SEDE 3
-  ws1 ws2   ws3 ws4            ws5 ws6                  ws7 ws8
-     │         │                  │                        │
-   sw1 ═════ sw2                 sw3                      sw4
-     │                            │                        │
-    rt1 ════ WAN 1 ════ rt2        rt1 ════ WAN 2 ════ rt3
+SEDE 1 (central)                     SEDE 2                SEDE 3
+  pc-s1-01..04                       pc-s2-01/02           pc-s3-01/02
+     │        │                          │                      │
+  sw-s1-acc-01 ═══ sw-s1-acc-02     sw-s2-acc-01           sw-s3-acc-01
+     │                                  │                      │
+   rt-s1-core                       rt-s2-edge             rt-s3-edge
+     │                                  │                      │
+   fw-s1-perim ── WAN 1 ── fw-s2-perim │ ── WAN 2 ── fw-s3-perim
+     │
+   fw-wan-edge ──▶ internet (NAT)
 ```
 
-**Seven RouterOS guests and eight PCs**, all of it in `inventory/group_vars/all.yml`:
+**Eleven RouterOS guests and eight PCs**, all of it in `inventory/group_vars/all.yml`:
 
 - **Four switches, and they are pure L2.** They put their data ports into a
   RouterOS bridge and put **no address on it**. That is what makes them switches
   rather than routers: their address lives only on their management leg
   (`ether1` → `vmbr1`). A switch with an address on its bridge starts routing,
   and the topology silently stops being the one in the diagram.
-- **Three routers** that do route: their site's LAN on one leg, the WAN on
-  another. The layout is **hierarchical** — `rt1` knows both remote networks and
-  `rt2`/`rt3` carry a default route to it — so adding a fourth site is one entry
-  and one route, not a mesh of them.
+- **Three routers** that route *and* serve: their site's LAN on one leg — where
+  they run the **DHCP server** and its reservations — and the WAN on another. They
+  are the LAN's gateway, not the firewall, because DHCP is a layer-2 broadcast and
+  its server has to sit in the same segment as its clients. The layout is
+  **hierarchical** — the central router knows both remote networks and the branch
+  routers carry a default route to their firewall — so adding a fourth site is one
+  entry and one route, not a mesh of them.
+- **Four firewalls** that filter the perimeter and route nothing between sites.
+  Filtering is **positional** (the rule ORDER decides), so the verification reads
+  the table back and checks the order, not just the set. The NAT lives only on
+  `fw-wan-edge`: inside the company the addresses are real, which is why the
+  return routes exist and no translation is nested. And a site firewall must
+  allow its **exterior** legs to talk to each other — that is how a branch reaches
+  the border, and leaving it out puts the branch's outbound traffic straight into
+  the `drop`.
 - **Eight workstations, each a PC**: one NIC, **no management interface, and no
   `config:` block at all**, so layer 2 never enters them. That is how it is done
   in a company: a desktop has one interface, takes its address by DHCP, and fleet
@@ -355,20 +382,26 @@ SEDE 1 (central)             SEDE 2                   SEDE 3
   (`GET /nodes/<node>/lxc/<id>/interfaces`) — that is the hypervisor's view, not a
   management path into the guest. Both were used, and they agree.
 
-Addressing, so a reader can follow the pings: management `10.10.10.16x` (the last
-octet **is** the vmid), the sites `10.11/10.12/10.13.0.0/24`, and the two WAN
-links as `/30`s (`10.99.1.0/30`, `10.99.2.0/30`). Fourteen portless bridges
-(`vmbr4`…`vmbr17`), **one per cable** — the bridge name appears literally at both
-of its ends, and the state validator refuses a name that is cited but never
-declared, so a typo cannot produce a one-ended cable.
+Addressing, so a reader can follow the pings: management `10.10.10.0/24` **in
+blocks by function** (`.11-.14` switches, `.21-.23` routers, `.31-.34` firewalls,
+`.41` the bootstrap — the v1 rule "the last octet is the vmid" cannot fit four
+digits), the sites `10.11/10.12/10.13.0.0/24`, the `router↔firewall` transit of
+each site as a `/30` (`10.21`, `10.22`, `10.23.0.0/30`), the links between site
+firewalls as `/30`s (`10.99.1.0/30`, `10.99.2.0/30`), and the border transit
+`10.29.0.0/30`. **Eighteen portless bridges** (`vmbr4`…`vmbr21`), **one per
+cable** — the bridge name appears literally at both of its ends, and the state
+validator refuses a name that is cited but never declared, so a typo cannot
+produce a one-ended cable.
 
 **A clean deploy leaves the workstations with no address until they are
 rebooted.** Their DHCP client runs when the container is created, when their
 site's DHCP server does not exist yet, and it does not retry forever. The routers
 serve them as soon as they are converged, and a reboot puts them right — which is
-also true of the routers themselves, and is why the order that works is: create,
-converge the **bootstrap**, reboot the **routers**, converge the **routers**,
-reboot the **workstations**, verify from the routers.
+also true of the routers themselves. The order that works, and the one that was
+actually measured, is: `apply.yml` (create and power on) → `configure/site.yml`
+(**network devices first**, because the workstations depend on their router's
+DHCP) → reboot the workstations → `configure/site.yml` again (now their inside is
+reachable) → `apply.yml` (the layer-1 verification closes at `failed=0`).
 ### The one thing the API cannot do: a router's first address
 
 A freshly imported CHR boots with a DHCP client on `ether1` and **no address**,
@@ -376,7 +409,7 @@ and as a VM it cannot take one from the host's DHCP server: the offer arrives
 with an unresolved UDP checksum and the guest's kernel drops it. Without an
 address its API does not exist, so there is nothing to configure it with.
 
-`lab-bootstrap` (vmid 143) is the machine that hands over that single address. It
+`infra-bootstrap` (vmid 901) is the machine that hands over that single address. It
 lives on the same segment as the router's management leg and runs dnsmasq bound to
 that one MAC, with `ethtool -K eth0 tx off gso off tso off` — without which its
 own offer would carry the same broken checksum.
@@ -569,7 +602,7 @@ Every run writes under `logs/` (gitignored — it describes real infrastructure 
 
 ```json
 {"ts": "...", "event": "api_call", "method": "PUT", "url": "https://…/nodes/Proxmox/lxc/141/config",
- "request_body": {"cores": 1, "delete": "net0", "tags": "ansible-managed;lab;netlab", "hostname": "ws1"},
+ "request_body": {"cores": 1, "delete": "net0", "tags": "ansible-managed;lab;netlab", "hostname": "pc-s1-01"},
  "status": 200, "response_body": "{\"data\":null}", "seconds": 0.186, "pid": 2457156}
 ```
 
