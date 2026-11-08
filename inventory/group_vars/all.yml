@@ -20,30 +20,30 @@
 #   2. DISTINCIÓN DE FUNCIONES POR MÁQUINA. En la v1 cada sede tenía un router
 #      que lo hacía todo. Aquí cada función es un equipo:
 #        - el SWITCH   conmuta (L2), no enruta ni filtra;
-#        - el ROUTER   enruta DENTRO de la empresa (entre sedes), no filtra;
-#        - el FIREWALL filtra el PERÍMETRO y es la puerta de enlace de su LAN.
-#      El camino de un paquete en una sede es:  pc -> sw -> fw -> rt -> WAN.
+#        - el ROUTER   es la PUERTA DE ENLACE y el servidor DHCP de su LAN, y
+#                      enruta dentro de la empresa (entre sedes);
+#        - el FIREWALL filtra el PERÍMETRO: está entre el router de su sede y la
+#                      WAN, y entre el núcleo y el proveedor.
 #
-#   3. SALIDA A INTERNET. La v1 era una red cerrada a propósito. La v2 tiene un
-#      firewall de borde (`fw-wan-edge`) que sale por la red de gestión hacia el
-#      host Proxmox (10.10.10.1) — el único gateway real del nodo — y hace NAT
-#      (masquerade) para toda la empresa. NO se pone ningún invitado en vmbr0
-#      (el bridge público): la salida va por la LAN de gestión, nunca exponiendo
-#      la máquina a internet directamente.
+#      El orden de un paquete es:  pc -> sw -> rt -> fw -> WAN
+#
+#      Y no es una preferencia de estilo: el DHCP es un broadcast de CAPA 2, así
+#      que quien reparte las direcciones tiene que estar en el MISMO segmento que
+#      sus clientes. Un firewall de capa 3 en medio rompería el DHCP; por eso la
+#      LAN cuelga del router y el firewall se pone DESPUÉS, de cara a la WAN.
+#
+#   3. SALIDA A INTERNET. La v1 era una red cerrada a propósito. Aquí el firewall
+#      de borde (`fw-wan-edge`) sale por la red de gestión hacia el host Proxmox
+#      (10.10.10.1) — el único gateway real del nodo, y está MEDIDO que da salida
+#      — y hace NAT (masquerade) para toda la empresa. NO se pone ningún invitado
+#      en vmbr0 (el bridge público): la salida va por la LAN de gestión, nunca
+#      exponiendo la máquina a internet directamente. El NAT vive SÓLO en el
+#      borde: los firewalls de sede filtran pero no traducen, así que dentro de la
+#      empresa las direcciones son las reales y las rutas de vuelta existen.
 #
 #   4. NOMBRES DESCRIPTIVOS: sw-s1-acc-01, rt-s2-edge, fw-s3-perim, pc-s1-01,
 #      fw-wan-edge, infra-bootstrap. El nombre dice el tipo, la sede y la
 #      función; no hay que consultar nada para saber qué es cada máquina.
-#
-#   5. LO QUE NO ESTÁ, A PROPÓSITO. Este manifiesto describe una EMPRESA, y sólo
-#      contiene eso: la topología de red, las estaciones de trabajo y el equipo
-#      que da de comer a los routers. Quedan fuera, y no se recrean:
-#        - `ct-forge-5f2a` (167): contenedor de pruebas del motor con atributos
-#          aleatorios. Servía para probar el framework, no forma parte del lab.
-#        - `wiki-tiddly` (131): el servidor de documentación de la v1.
-#        - `caddy` (101): invitado preexistente. No aparece aquí en ninguna lista.
-#      Los invitados de la v1 tampoco se declaran: la convergencia NUNCA borra,
-#      así que seguir corriendo no los altera. Se retiran a mano desde la UI.
 # ============================================================================
 
 pve_node: Proxmox
@@ -55,8 +55,7 @@ pve_node: Proxmox
 # es el host Proxmox (10.10.10.1). Ese /24 no se puede ampliar sin reconfigurar
 # el host, y el host no se toca (ver .hermes.md), así que la regla de la v1
 # ("el último octeto es el vmid") NO cabe con cuatro dígitos: aquí las
-# direcciones de gestión se asignan por BLOQUES DE FUNCIÓN, que es lo que hace
-# legible un direccionamiento cuando crece.
+# direcciones de gestión se asignan por BLOQUES DE FUNCIÓN.
 #
 #   10.10.10.1      el host Proxmox (NO es nuestro; es el gateway)
 #   10.10.10.2      caddy (invitado preexistente, AJENO a este repositorio)
@@ -68,8 +67,10 @@ pve_node: Proxmox
 lab_mgmt_network: "10.10.10.0/24"
 lab_mgmt_gateway: "10.10.10.1"
 
-# LAN de cada sede. Como en la v1, cada sede es su propia red: un paquete de una
-# sede a otra tiene que cruzar la topología, no hay atajo.
+# LAN de cada sede: la red de sus estaciones. Cada sede es su propia red, así que
+# un paquete de una sede a otra tiene que cruzar la topología (no hay atajo). Su
+# puerta de enlace es el ROUTER de la sede, que es también quien reparte las
+# direcciones por DHCP.
 lab_site1_network: "10.11.0.0/24"
 lab_site1_gateway: "10.11.0.1"
 lab_site1_pool: "10.11.0.100-10.11.0.199"
@@ -80,8 +81,10 @@ lab_site3_network: "10.13.0.0/24"
 lab_site3_gateway: "10.13.0.1"
 lab_site3_pool: "10.13.0.100-10.13.0.199"
 
-# Enlaces WAN punto a punto entre la central y cada delegación (dos /30, no un
-# segmento compartido: es la forma de que una sede nueva no toque las demás).
+# Enlaces WAN punto a punto. Ahora los terminan los FIREWALLS de cada sede (cada
+# uno en su extremo de la WAN), no los routers: el firewall es la boca de la
+# sede hacia fuera. Dos /30, no un segmento compartido, es lo que hace que una
+# sede nueva no toque las demás.
 lab_wan1_network: "10.99.1.0/30"
 lab_wan1_hub: "10.99.1.1"
 lab_wan1_spoke: "10.99.1.2"
@@ -89,8 +92,9 @@ lab_wan2_network: "10.99.2.0/30"
 lab_wan2_hub: "10.99.2.1"
 lab_wan2_spoke: "10.99.2.2"
 
-# Tránsitos firewall<->router de cada sede, uno por sede (/30). Es el cable que
-# separa LITERALMENTE la LAN del equipo que filtra.
+# Tránsitos router<->firewall de cada sede, uno por sede (/30). Es el cable que
+# separa LITERALMENTE la LAN del equipo que filtra: el router ve su LAN por
+# dentro, el firewall la empresa por fuera.
 lab_tr1_network: "10.21.0.0/30"
 lab_tr1_fw: "10.21.0.1"
 lab_tr1_rt: "10.21.0.2"
@@ -101,14 +105,14 @@ lab_tr3_network: "10.23.0.0/30"
 lab_tr3_fw: "10.23.0.1"
 lab_tr3_rt: "10.23.0.2"
 
-# El borde de la empresa: el núcleo entrega aquí todo lo que sale, y el firewall
-# de borde lo NAT-ea hacia la red de gestión.
+# El borde de la empresa: el firewall de la central entrega aquí todo lo que
+# sale, y el firewall de borde lo NAT-ea hacia la red de gestión.
 lab_edge_network: "10.29.0.0/30"
 lab_edge_core: "10.29.0.1"
 lab_edge_fw: "10.29.0.2"
 
 # El "proveedor de internet" es el propio host Proxmox: es el único que tiene
-# salida real. El firewall de borde le pide la ruta por defecto a él.
+# salida real, y está medido (TCP a internet desde la LAN de gestión funciona).
 lab_internet_gateway: "10.10.10.1"
 lab_internet_dns: "1.1.1.1"
 
@@ -139,12 +143,13 @@ pve_tunnel:
   address: "10.99.99.2/24"
   guest_network:
     - "10.10.10.0/24"   # la LAN de gestión (host y patas de gestión)
-    - "10.11.0.0/24"    # SEDE 1 (central), detrás de fw-s1-perim
-    - "10.12.0.0/24"    # SEDE 2, detrás de fw-s2-perim
-    - "10.13.0.0/24"    # SEDE 3, detrás de fw-s3-perim
+    - "10.11.0.0/24"    # SEDE 1 (central)
+    - "10.12.0.0/24"    # SEDE 2
+    - "10.13.0.0/24"    # SEDE 3
   # Rutas que el ENDPOINT (el host) necesita para entregar el tráfico del túnel
   # a cada LAN de sede. Se llega a la red de una sede por la pata de gestión de
-  # su router, que es como se llega en la vida real.
+  # su ROUTER (el que tiene esa LAN conectada), que es como se llega en la vida
+  # real: por la pata de administración del equipo que es puerta de esa red.
   endpoint_routes:
     - to: "{{ lab_site1_network }}"
       via: "10.10.10.21"   # rt-s1-core
@@ -160,13 +165,9 @@ pve_tunnel:
 #
 # Uno por CABLE, aislado (sin puertos de uplink), y el nombre del bridge aparece
 # literal en sus dos puntas. El motor sólo CREA bridges: los que dejan de
-# declararse se quedan en el host y se retiran por la API.
-#
-# Se reutilizan vmbr4..vmbr17 (ya existen en el nodo) y se añaden vmbr18..21.
-# El comentario de los segmentos que YA existen no lo reescribe el motor (sólo
-# crea), así que lo pone este repositorio con una llamada aparte
-# (playbooks/tools/segment_comments.py), que es lo que hace que los comentarios
-# de la v2 se lean también en la interfaz de Proxmox.
+# declararse se quedan en el host y se retiran por la API. Los comentarios de
+# los segmentos que ya existen los pone el repositorio con una llamada aparte
+# (playbooks/tools/segment_comments.py), porque el motor no los reescribe.
 # ---------------------------------------------------------------------------
 pve_bridges:
   # ---- SEDE 1 (central) -----------------------------------------------------
@@ -181,33 +182,33 @@ pve_bridges:
   - iface: vmbr8
     comments: "cable: sw-s1-acc-01 ether4 <-> sw-s1-acc-02 ether4 (troncal L2)"
   - iface: vmbr9
-    comments: "cable: sw-s1-acc-01 ether5 <-> fw-s1-perim ether2 (la LAN de la sede hacia su firewall)"
+    comments: "cable: sw-s1-acc-01 ether5 <-> rt-s1-core ether2 (LA LAN DE LA SEDE 1, 10.11.0.0/24)"
   - iface: vmbr10
-    comments: "cable: fw-s1-perim ether3 <-> rt-s1-core ether2 (transito 10.21.0.0/30)"
+    comments: "cable: rt-s1-core ether3 <-> fw-s1-perim ether2 (transito 10.21.0.0/30)"
   - iface: vmbr11
-    comments: "WAN 1: rt-s1-core ether3 <-> rt-s2-edge ether3 (10.99.1.0/30)"
+    comments: "WAN 1: fw-s1-perim ether3 <-> fw-s2-perim ether3 (10.99.1.0/30)"
   - iface: vmbr12
-    comments: "WAN 2: rt-s1-core ether4 <-> rt-s3-edge ether3 (10.99.2.0/30)"
+    comments: "WAN 2: fw-s1-perim ether4 <-> fw-s3-perim ether3 (10.99.2.0/30)"
   - iface: vmbr13
-    comments: "cable: rt-s1-core ether5 <-> fw-wan-edge ether2 (transito de borde 10.29.0.0/30)"
+    comments: "cable: fw-s1-perim ether5 <-> fw-wan-edge ether2 (transito de borde 10.29.0.0/30)"
   # ---- SEDE 2 (delegacion) --------------------------------------------------
   - iface: vmbr14
     comments: "cable: pc-s2-01 eth0 <-> sw-s2-acc-01 ether2"
   - iface: vmbr15
     comments: "cable: pc-s2-02 eth0 <-> sw-s2-acc-01 ether3"
   - iface: vmbr16
-    comments: "cable: sw-s2-acc-01 ether4 <-> fw-s2-perim ether2"
+    comments: "cable: sw-s2-acc-01 ether4 <-> rt-s2-edge ether2 (LA LAN DE LA SEDE 2, 10.12.0.0/24)"
   - iface: vmbr17
-    comments: "cable: fw-s2-perim ether3 <-> rt-s2-edge ether2 (transito 10.22.0.0/30)"
+    comments: "cable: rt-s2-edge ether3 <-> fw-s2-perim ether2 (transito 10.22.0.0/30)"
   # ---- SEDE 3 (delegacion) --------------------------------------------------
   - iface: vmbr18
     comments: "cable: pc-s3-01 eth0 <-> sw-s3-acc-01 ether2"
   - iface: vmbr19
     comments: "cable: pc-s3-02 eth0 <-> sw-s3-acc-01 ether3"
   - iface: vmbr20
-    comments: "cable: sw-s3-acc-01 ether4 <-> fw-s3-perim ether2"
+    comments: "cable: sw-s3-acc-01 ether4 <-> rt-s3-edge ether2 (LA LAN DE LA SEDE 3, 10.13.0.0/24)"
   - iface: vmbr21
-    comments: "cable: fw-s3-perim ether3 <-> rt-s3-edge ether2 (transito 10.23.0.0/30)"
+    comments: "cable: rt-s3-edge ether3 <-> fw-s3-perim ether2 (transito 10.23.0.0/30)"
 
 # ---------------------------------------------------------------------------
 # CONTENEDORES (LXC)
@@ -315,8 +316,8 @@ pve_containers:
   # de oficina tiene un interfaz y recibe su dirección por DHCP; nadie le pone un
   # segundo NIC "de gestión" ni entra en él por SSH desde la red.
   #
-  # Su dirección se la da por DHCP el FIREWALL de su sede (es el perímetro y la
-  # puerta de enlace de la LAN), con una reserva atada a su MAC declarada aquí.
+  # Su dirección se la da por DHCP el ROUTER de su sede, con una reserva atada a
+  # su MAC declarada aquí.
   # ==========================================================================
 
   - vmid: 1401
@@ -491,7 +492,8 @@ pve_containers:
 # QEMU VMs — mismas reglas declarativas que los contenedores, con una
 # diferencia: proxmox_kvm se niega a actualizar net/scsi/ide/sata/virtio (y
 # bios/machine/scsihw/ostype), así que para una VM son creation-time: la deriva
-# en ellos se RECHAZA, no se converge.
+# en ellos se RECHAZA, no se converge. Y por eso cambiar de qué bridge cuelga
+# una pata obliga a recrear la máquina.
 # ============================================================================
 pve_vm_defaults:
   bios: seabios
@@ -528,7 +530,7 @@ pve_vm_defaults:
 # equipo AÑADE sus propias etiquetas (sede y papel) sin repetir estas.
 #
 # Los equipos de red van ANTES que las workstations: la petición DHCP de una
-# workstation la contesta el firewall de su sede, así que arrancarlos juntos es
+# workstation la contesta el router de su sede, así que arrancarlos juntos es
 # una carrera que la workstation pierde.
 # ---------------------------------------------------------------------------
 pve_chr_defaults:
@@ -557,7 +559,6 @@ pve_chr_defaults:
   # construir un disco a partir de un tamaño, así que la imagen raw está subida a
   # un storage que acepta `import` y se adjunta con la sintaxis import-from de la
   # API en el momento de crear la VM (ver playbooks/tasks/disk_import.yml).
-  # `key` es el disco que la imagen rellena.
   disk_import:
     - key: scsi0
       source: "local:import/chr-7.25.1.raw"
@@ -567,19 +568,19 @@ pve_chr_defaults:
   serial:
     serial0: socket
   vga: serial0
-  # SIN `keyboard:` a propósito: sólo cambiaría cómo el VNC convierte las teclas
-  # del navegador, y la última traducción es la del propio invitado (RouterOS es
-  # US y no tiene ajuste).
   description: "MikroTik RouterOS: una funcion de red, un equipo. Gestionado por REST."
   tags: [netlab, routeros, red, ansible-managed]
 
 pve_vms:
   # ==========================================================================
-  # SWITCHES (ST = 3S) — conmutan. No enrutan ni filtran.
+  # SWITCHES (ST = 3S) — conmutan. No enrutan, no filtran y NO dan DHCP.
+  #
+  # Un switch de acceso: los puertos de los PCs a un lado, el puerto hacia su
+  # router al otro. Su única dirección es la de gestión.
   # ==========================================================================
 
   # sw-s1-acc-01: primer switch de acceso de la central. Une pc-s1-01 y pc-s1-02
-  # y entrega la sede a su firewall. El troncal hacia el segundo switch va por
+  # y entrega la sede a su router. El troncal hacia el segundo switch va por
   # ether4.
   - vmid: 1301
     name: sw-s1-acc-01
@@ -590,7 +591,7 @@ pve_vms:
       net1: "virtio=BC:24:11:00:31:02,bridge=vmbr4"    # ether2 -> pc-s1-01
       net2: "virtio=BC:24:11:00:31:03,bridge=vmbr5"    # ether3 -> pc-s1-02
       net3: "virtio=BC:24:11:00:31:04,bridge=vmbr8"    # ether4 -> sw-s1-acc-02 (troncal)
-      net4: "virtio=BC:24:11:00:31:05,bridge=vmbr9"    # ether5 -> fw-s1-perim (la LAN de la sede)
+      net4: "virtio=BC:24:11:00:31:05,bridge=vmbr9"    # ether5 -> rt-s1-core (la LAN de la sede)
     config:
       routeros:
         identity: sw-s1-acc-01
@@ -601,12 +602,12 @@ pve_vms:
           - name: lan
             ports: [ether2, ether3, ether4, ether5]
         dhcp_client: false
-        # La puerta de enlace de gestión apunta al firewall de su sede: es el
-        # perímetro y el único que sabe salir. Es lo que convierte al switch en
-        # un equipo gestionable de verdad.
+        # La puerta de enlace de gestión apunta al router de su sede, que es el
+        # que conecta con el resto. Es lo que convierte al switch en un equipo
+        # gestionable de verdad.
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "10.10.10.31"
+            gateway: "10.10.10.21"
 
   # sw-s1-acc-02: segundo switch de acceso de la central. Cuelga del troncal
   # (mismo dominio L2, que es lo que hace que las cuatro workstations de la sede
@@ -632,7 +633,7 @@ pve_vms:
         dhcp_client: false
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "10.10.10.31"
+            gateway: "10.10.10.21"
 
   # sw-s2-acc-01: el switch de acceso de la delegación 2.
   - vmid: 2301
@@ -643,7 +644,7 @@ pve_vms:
       net0: "virtio=BC:24:11:00:33:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:33:02,bridge=vmbr14"   # ether2 -> pc-s2-01
       net2: "virtio=BC:24:11:00:33:03,bridge=vmbr15"   # ether3 -> pc-s2-02
-      net3: "virtio=BC:24:11:00:33:04,bridge=vmbr16"   # ether4 -> fw-s2-perim
+      net3: "virtio=BC:24:11:00:33:04,bridge=vmbr16"   # ether4 -> rt-s2-edge (la LAN de la sede)
     config:
       routeros:
         identity: sw-s2-acc-01
@@ -656,7 +657,7 @@ pve_vms:
         dhcp_client: false
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "10.10.10.32"
+            gateway: "10.10.10.22"
 
   # sw-s3-acc-01: el switch de acceso de la delegación 3.
   - vmid: 3301
@@ -667,7 +668,7 @@ pve_vms:
       net0: "virtio=BC:24:11:00:34:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:34:02,bridge=vmbr18"   # ether2 -> pc-s3-01
       net2: "virtio=BC:24:11:00:34:03,bridge=vmbr19"   # ether3 -> pc-s3-02
-      net3: "virtio=BC:24:11:00:34:04,bridge=vmbr20"   # ether4 -> fw-s3-perim
+      net3: "virtio=BC:24:11:00:34:04,bridge=vmbr20"   # ether4 -> rt-s3-edge (la LAN de la sede)
     config:
       routeros:
         identity: sw-s3-acc-01
@@ -680,50 +681,49 @@ pve_vms:
         dhcp_client: false
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "10.10.10.33"
+            gateway: "10.10.10.23"
 
   # ==========================================================================
-  # FIREWALLS (ST = 1S, y 91 el de borde) — filtran el PERÍMETRO y son la
-  # puerta de la LAN.
+  # ROUTERS (ST = 2S) — son la PUERTA DE ENLACE y el SERVIDOR DHCP de su LAN, y
+  # enrutan dentro de la empresa. No filtran: eso es del firewall.
   #
-  # Cada firewall de sede tiene su pata "inside" en la LAN de la sede (es su
-  # puerta de enlace y su servidor DHCP) y su pata "outside" en el tránsito
-  # hacia el router de la sede. El firewall de borde hace lo mismo de cara al
-  # "proveedor": su pata exterior ES la red de gestión, y NAT-ea hacia ella.
-  #
-  # El bloque `firewall` (filter/nat) lo converge el rol routeros extendido.
+  # Su LAN cuelga de ether2 (por el cable al switch de su sede) y por eso pueden
+  # repartir direcciones: el DHCP es broadcast L2 y el router está DENTRO de ese
+  # segmento. Por ether3 hablan con su firewall, que es la boca hacia fuera.
   # ==========================================================================
 
-  # fw-s1-perim: perímetro de la central. Es la puerta de enlace de la LAN de la
-  # sede 1 (10.11.0.1) y quien reparte las direcciones de sus workstations.
-  - vmid: 1101
-    name: fw-s1-perim
+  # rt-s1-core: el router de la central. Conoce las tres sedes (a través de su
+  # firewall) y es el núcleo de la WAN interna.
+  - vmid: 1201
+    name: rt-s1-core
     chr: true
-    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede1, central]
+    tags: [netlab, routeros, red, ansible-managed, router, nucleo, sede1, central]
     net:
-      net0: "virtio=BC:24:11:00:41:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:41:02,bridge=vmbr9"    # ether2 -> sw-s1-acc-01 (LAN de la sede)
-      net2: "virtio=BC:24:11:00:41:03,bridge=vmbr10"   # ether3 -> rt-s1-core (transito)
+      net0: "virtio=BC:24:11:00:21:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:21:02,bridge=vmbr9"    # ether2 -> sw-s1-acc-01 (LA LAN DE LA SEDE)
+      net2: "virtio=BC:24:11:00:21:03,bridge=vmbr10"   # ether3 -> fw-s1-perim (transito)
     config:
       routeros:
-        identity: fw-s1-perim
+        identity: rt-s1-core
         addresses:
-          - address: "10.10.10.31/24"
+          - address: "10.10.10.21/24"
             interface: ether1
           - address: "{{ lab_site1_gateway }}/24"
             interface: ether2
-          - address: "{{ lab_tr1_fw }}/30"
+          - address: "{{ lab_tr1_rt }}/30"
             interface: ether3
         dhcp_client: false
         routes:
-          - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_tr1_rt }}"
+          # Las delegaciones y la salida, por su firewall.
           - dst_address: "{{ lab_site2_network }}"
-            gateway: "{{ lab_tr1_rt }}"
+            gateway: "{{ lab_tr1_fw }}"
           - dst_address: "{{ lab_site3_network }}"
-            gateway: "{{ lab_tr1_rt }}"
+            gateway: "{{ lab_tr1_fw }}"
           - dst_address: "{{ lab_control_network }}"
             gateway: "{{ lab_mgmt_gateway }}"
+          - dst_address: "0.0.0.0/0"
+            gateway: "{{ lab_tr1_fw }}"
+        # El DHCP lo sirve AQUÍ, no en el firewall: es el router de la sede.
         dhcp_servers:
           - name: sede1
             interface: ether2
@@ -745,44 +745,32 @@ pve_vms:
                     'comment': c.hostname }) -%}
               {%- endfor -%}
               {{ out }}
-        # Perímetro: lo establecido pasa, de dentro a fuera pasa, y lo demás que
-        # se inicia se descarta. Es el filtrado mínimo honesto de un firewall de
-        # borde de sede.
-        firewall:
-          filter:
-            - {chain: forward, action: accept, connection_state: "established,related"}
-            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether3}
-            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether2}
-            - {chain: forward, action: drop}
-            - {chain: input, action: accept, in_interface: ether1}
-            - {chain: input, action: accept, connection_state: "established,related"}
-            - {chain: input, action: drop}
-          nat:
-            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
-  # fw-s2-perim: perímetro de la delegación 2.
-  - vmid: 2101
-    name: fw-s2-perim
+  # rt-s2-edge: el router de la delegación 2. Su LAN, su DHCP y una ruta por
+  # defecto hacia su firewall: la configuración real de una delegación, que no
+  # necesita saber qué hay al otro lado.
+  - vmid: 2201
+    name: rt-s2-edge
     chr: true
-    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede2, delegacion]
+    tags: [netlab, routeros, red, ansible-managed, router, sede2, delegacion]
     net:
-      net0: "virtio=BC:24:11:00:42:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:42:02,bridge=vmbr16"   # ether2 -> sw-s2-acc-01 (LAN de la sede)
-      net2: "virtio=BC:24:11:00:42:03,bridge=vmbr17"   # ether3 -> rt-s2-edge (transito)
+      net0: "virtio=BC:24:11:00:22:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:22:02,bridge=vmbr16"   # ether2 -> sw-s2-acc-01 (LA LAN DE LA SEDE)
+      net2: "virtio=BC:24:11:00:22:03,bridge=vmbr17"   # ether3 -> fw-s2-perim (transito)
     config:
       routeros:
-        identity: fw-s2-perim
+        identity: rt-s2-edge
         addresses:
-          - address: "10.10.10.32/24"
+          - address: "10.10.10.22/24"
             interface: ether1
           - address: "{{ lab_site2_gateway }}/24"
             interface: ether2
-          - address: "{{ lab_tr2_fw }}/30"
+          - address: "{{ lab_tr2_rt }}/30"
             interface: ether3
         dhcp_client: false
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_tr2_rt }}"
+            gateway: "{{ lab_tr2_fw }}"
           - dst_address: "{{ lab_control_network }}"
             gateway: "{{ lab_mgmt_gateway }}"
         dhcp_servers:
@@ -803,41 +791,30 @@ pve_vms:
                     'comment': c.hostname }) -%}
               {%- endfor -%}
               {{ out }}
-        firewall:
-          filter:
-            - {chain: forward, action: accept, connection_state: "established,related"}
-            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether3}
-            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether2}
-            - {chain: forward, action: drop}
-            - {chain: input, action: accept, in_interface: ether1}
-            - {chain: input, action: accept, connection_state: "established,related"}
-            - {chain: input, action: drop}
-          nat:
-            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
-  # fw-s3-perim: perímetro de la delegación 3.
-  - vmid: 3101
-    name: fw-s3-perim
+  # rt-s3-edge: el router de la delegación 3, simétrico al anterior.
+  - vmid: 3201
+    name: rt-s3-edge
     chr: true
-    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede3, delegacion]
+    tags: [netlab, routeros, red, ansible-managed, router, sede3, delegacion]
     net:
-      net0: "virtio=BC:24:11:00:43:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:43:02,bridge=vmbr20"   # ether2 -> sw-s3-acc-01 (LAN de la sede)
-      net2: "virtio=BC:24:11:00:43:03,bridge=vmbr21"   # ether3 -> rt-s3-edge (transito)
+      net0: "virtio=BC:24:11:00:23:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:23:02,bridge=vmbr20"   # ether2 -> sw-s3-acc-01 (LA LAN DE LA SEDE)
+      net2: "virtio=BC:24:11:00:23:03,bridge=vmbr21"   # ether3 -> fw-s3-perim (transito)
     config:
       routeros:
-        identity: fw-s3-perim
+        identity: rt-s3-edge
         addresses:
-          - address: "10.10.10.33/24"
+          - address: "10.10.10.23/24"
             interface: ether1
           - address: "{{ lab_site3_gateway }}/24"
             interface: ether2
-          - address: "{{ lab_tr3_fw }}/30"
+          - address: "{{ lab_tr3_rt }}/30"
             interface: ether3
         dhcp_client: false
         routes:
           - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_tr3_rt }}"
+            gateway: "{{ lab_tr3_fw }}"
           - dst_address: "{{ lab_control_network }}"
             gateway: "{{ lab_mgmt_gateway }}"
         dhcp_servers:
@@ -858,6 +835,105 @@ pve_vms:
                     'comment': c.hostname }) -%}
               {%- endfor -%}
               {{ out }}
+
+  # ==========================================================================
+  # FIREWALLS (ST = 1S, y 91 el de borde) — filtran el PERÍMETRO. Están entre el
+  # router de su sede y la WAN: no son la puerta de nadie ni dan DHCP, son el
+  # filtro por el que sale (y entra) el tráfico de la sede.
+  #
+  # El NAT vive SÓLO en el de borde: dentro de la empresa las direcciones son las
+  # reales, así que las rutas de vuelta existen y no hay traducciones anidadas.
+  # ==========================================================================
+
+  # fw-s1-perim: perímetro de la central. Por ether2 habla con su router; por
+  # ether3 y ether4 con las WAN de las delegaciones, y por ether5 con el borde.
+  - vmid: 1101
+    name: fw-s1-perim
+    chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede1, central]
+    net:
+      net0: "virtio=BC:24:11:00:41:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:41:02,bridge=vmbr10"   # ether2 -> rt-s1-core (transito)
+      net2: "virtio=BC:24:11:00:41:03,bridge=vmbr11"   # ether3 -> WAN 1 (a la sede 2)
+      net3: "virtio=BC:24:11:00:41:04,bridge=vmbr12"   # ether4 -> WAN 2 (a la sede 3)
+      net4: "virtio=BC:24:11:00:41:05,bridge=vmbr13"   # ether5 -> fw-wan-edge (borde)
+    config:
+      routeros:
+        identity: fw-s1-perim
+        addresses:
+          - address: "10.10.10.31/24"
+            interface: ether1
+          - address: "{{ lab_tr1_fw }}/30"
+            interface: ether2
+          - address: "{{ lab_wan1_hub }}/30"
+            interface: ether3
+          - address: "{{ lab_wan2_hub }}/30"
+            interface: ether4
+          - address: "{{ lab_edge_core }}/30"
+            interface: ether5
+        dhcp_client: false
+        routes:
+          # Su propia sede, detrás del router.
+          - dst_address: "{{ lab_site1_network }}"
+            gateway: "{{ lab_tr1_rt }}"
+          # Las delegaciones, por sus WAN.
+          - dst_address: "{{ lab_site2_network }}"
+            gateway: "{{ lab_wan1_spoke }}"
+          - dst_address: "{{ lab_site3_network }}"
+            gateway: "{{ lab_wan2_spoke }}"
+          - dst_address: "{{ lab_control_network }}"
+            gateway: "{{ lab_mgmt_gateway }}"
+          # Y lo que sale de la empresa, por el borde.
+          - dst_address: "0.0.0.0/0"
+            gateway: "{{ lab_edge_fw }}"
+        # Perímetro: lo establecido pasa, y el tráfico de su sede puede salir y
+        # volver por cada una de sus tres bocas. Lo demás que se inicia, se
+        # descarta.
+        firewall:
+          filter:
+            - {chain: forward, action: accept, connection_state: "established,related"}
+            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether3}
+            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether4}
+            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether5}
+            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether2}
+            - {chain: forward, action: accept, in_interface: ether4, out_interface: ether2}
+            - {chain: forward, action: accept, in_interface: ether5, out_interface: ether2}
+            - {chain: forward, action: drop}
+            - {chain: input, action: accept, in_interface: ether1}
+            - {chain: input, action: accept, connection_state: "established,related"}
+            - {chain: input, action: drop}
+
+  # fw-s2-perim: perímetro de la delegación 2. Su WAN la conecta con la central.
+  - vmid: 2101
+    name: fw-s2-perim
+    chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede2, delegacion]
+    net:
+      net0: "virtio=BC:24:11:00:42:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:42:02,bridge=vmbr17"   # ether2 -> rt-s2-edge (transito)
+      net2: "virtio=BC:24:11:00:42:03,bridge=vmbr11"   # ether3 -> WAN 1 (a la central)
+    config:
+      routeros:
+        identity: fw-s2-perim
+        addresses:
+          - address: "10.10.10.32/24"
+            interface: ether1
+          - address: "{{ lab_tr2_fw }}/30"
+            interface: ether2
+          - address: "{{ lab_wan1_spoke }}/30"
+            interface: ether3
+        dhcp_client: false
+        routes:
+          - dst_address: "{{ lab_site2_network }}"
+            gateway: "{{ lab_tr2_rt }}"
+          - dst_address: "{{ lab_site1_network }}"
+            gateway: "{{ lab_wan1_hub }}"
+          - dst_address: "{{ lab_site3_network }}"
+            gateway: "{{ lab_wan1_hub }}"
+          - dst_address: "{{ lab_control_network }}"
+            gateway: "{{ lab_wan1_hub }}"
+          - dst_address: "0.0.0.0/0"
+            gateway: "{{ lab_wan1_hub }}"
         firewall:
           filter:
             - {chain: forward, action: accept, connection_state: "established,related"}
@@ -867,23 +943,58 @@ pve_vms:
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}
             - {chain: input, action: drop}
-          nat:
-            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
-  # fw-wan-edge: el firewall de BORDE. Es el único que sale de la empresa.
-  #
-  # Su pata exterior (ether1) es la red de gestión: NO hay un segmento "ISP"
-  # inventado, porque el proveedor real es el host Proxmox y vive ahí. NAT-ea
-  # (masquerade) todo lo que sale por esa pata, de modo que el laboratorio sale
-  # a internet con la dirección del host y ninguna máquina del lab queda
-  # expuesta directamente.
+  # fw-s3-perim: perímetro de la delegación 3, simétrico por la WAN 2.
+  - vmid: 3101
+    name: fw-s3-perim
+    chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede3, delegacion]
+    net:
+      net0: "virtio=BC:24:11:00:43:01,bridge=vmbr1"    # ether1 gestion
+      net1: "virtio=BC:24:11:00:43:02,bridge=vmbr21"   # ether2 -> rt-s3-edge (transito)
+      net2: "virtio=BC:24:11:00:43:03,bridge=vmbr12"   # ether3 -> WAN 2 (a la central)
+    config:
+      routeros:
+        identity: fw-s3-perim
+        addresses:
+          - address: "10.10.10.33/24"
+            interface: ether1
+          - address: "{{ lab_tr3_fw }}/30"
+            interface: ether2
+          - address: "{{ lab_wan2_spoke }}/30"
+            interface: ether3
+        dhcp_client: false
+        routes:
+          - dst_address: "{{ lab_site3_network }}"
+            gateway: "{{ lab_tr3_rt }}"
+          - dst_address: "{{ lab_site1_network }}"
+            gateway: "{{ lab_wan2_hub }}"
+          - dst_address: "{{ lab_site2_network }}"
+            gateway: "{{ lab_wan2_hub }}"
+          - dst_address: "{{ lab_control_network }}"
+            gateway: "{{ lab_wan2_hub }}"
+          - dst_address: "0.0.0.0/0"
+            gateway: "{{ lab_wan2_hub }}"
+        firewall:
+          filter:
+            - {chain: forward, action: accept, connection_state: "established,related"}
+            - {chain: forward, action: accept, in_interface: ether2, out_interface: ether3}
+            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether2}
+            - {chain: forward, action: drop}
+            - {chain: input, action: accept, in_interface: ether1}
+            - {chain: input, action: accept, connection_state: "established,related"}
+            - {chain: input, action: drop}
+
+  # fw-wan-edge: el firewall de BORDE, y el ÚNICO que traduce direcciones. Su
+  # pata exterior (ether1) es la red de gestión, donde vive el proveedor real (el
+  # host Proxmox): NO hay un segmento "ISP" inventado.
   - vmid: 9101
     name: fw-wan-edge
     chr: true
     tags: [netlab, routeros, red, ansible-managed, firewall, borde, internet, sin-sede]
     net:
       net0: "virtio=BC:24:11:00:49:01,bridge=vmbr1"    # ether1 -> "proveedor" (red de gestion)
-      net1: "virtio=BC:24:11:00:49:02,bridge=vmbr13"   # ether2 -> rt-s1-core (transito de borde)
+      net1: "virtio=BC:24:11:00:49:02,bridge=vmbr13"   # ether2 -> fw-s1-perim (transito de borde)
     config:
       routeros:
         identity: fw-wan-edge
@@ -914,113 +1025,6 @@ pve_vms:
             - {chain: input, action: drop}
           nat:
             - {chain: srcnat, action: masquerade, out_interface: ether1}
-
-  # ==========================================================================
-  # ROUTERS (ST = 2S) — enrutan DENTRO de la empresa. No filtran y no sirven
-  # DHCP: eso es del firewall. El router de la central conoce todas las sedes;
-  # los de las delegaciones sólo saben salir.
-  # ==========================================================================
-
-  # rt-s1-core: el núcleo. Conoce las tres sedes, los dos enlaces WAN y la
-  # salida de la empresa.
-  - vmid: 1201
-    name: rt-s1-core
-    chr: true
-    tags: [netlab, routeros, red, ansible-managed, router, nucleo, sede1, central]
-    net:
-      net0: "virtio=BC:24:11:00:21:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:21:02,bridge=vmbr10"   # ether2 -> fw-s1-perim (LAN de la sede 1)
-      net2: "virtio=BC:24:11:00:21:03,bridge=vmbr11"   # ether3 -> WAN 1
-      net3: "virtio=BC:24:11:00:21:04,bridge=vmbr12"   # ether4 -> WAN 2
-      net4: "virtio=BC:24:11:00:21:05,bridge=vmbr13"   # ether5 -> fw-wan-edge (borde)
-    config:
-      routeros:
-        identity: rt-s1-core
-        addresses:
-          - address: "10.10.10.21/24"
-            interface: ether1
-          - address: "{{ lab_tr1_rt }}/30"
-            interface: ether2
-          - address: "{{ lab_wan1_hub }}/30"
-            interface: ether3
-          - address: "{{ lab_wan2_hub }}/30"
-            interface: ether4
-          - address: "{{ lab_edge_core }}/30"
-            interface: ether5
-        dhcp_client: false
-        routes:
-          # La LAN de su propia sede está DETRÁS de su firewall.
-          - dst_address: "{{ lab_site1_network }}"
-            gateway: "{{ lab_tr1_fw }}"
-          # Las delegaciones, por sus enlaces WAN.
-          - dst_address: "{{ lab_site2_network }}"
-            gateway: "{{ lab_wan1_spoke }}"
-          - dst_address: "{{ lab_site3_network }}"
-            gateway: "{{ lab_wan2_spoke }}"
-          # La vuelta hacia el nodo de control.
-          - dst_address: "{{ lab_control_network }}"
-            gateway: "{{ lab_mgmt_gateway }}"
-          # Y todo lo demás hacia fuera, por el firewall de borde.
-          - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_edge_fw }}"
-
-  # rt-s2-edge: el router de la delegación 2. Una pata a su firewall, una a la
-  # WAN 1, y una ruta POR DEFECTO hacia el núcleo — la configuración real de una
-  # delegación, que no necesita saber qué hay al otro lado.
-  - vmid: 2201
-    name: rt-s2-edge
-    chr: true
-    tags: [netlab, routeros, red, ansible-managed, router, sede2, delegacion]
-    net:
-      net0: "virtio=BC:24:11:00:22:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:22:02,bridge=vmbr17"   # ether2 -> fw-s2-perim
-      net2: "virtio=BC:24:11:00:22:03,bridge=vmbr11"   # ether3 -> WAN 1
-    config:
-      routeros:
-        identity: rt-s2-edge
-        addresses:
-          - address: "10.10.10.22/24"
-            interface: ether1
-          - address: "{{ lab_tr2_rt }}/30"
-            interface: ether2
-          - address: "{{ lab_wan1_spoke }}/30"
-            interface: ether3
-        dhcp_client: false
-        routes:
-          - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_wan1_hub }}"
-          - dst_address: "{{ lab_site2_network }}"
-            gateway: "{{ lab_tr2_fw }}"
-          - dst_address: "{{ lab_control_network }}"
-            gateway: "{{ lab_mgmt_gateway }}"
-
-  # rt-s3-edge: el router de la delegación 3, simétrico al anterior por la WAN 2.
-  - vmid: 3201
-    name: rt-s3-edge
-    chr: true
-    tags: [netlab, routeros, red, ansible-managed, router, sede3, delegacion]
-    net:
-      net0: "virtio=BC:24:11:00:23:01,bridge=vmbr1"    # ether1 gestion
-      net1: "virtio=BC:24:11:00:23:02,bridge=vmbr21"   # ether2 -> fw-s3-perim
-      net2: "virtio=BC:24:11:00:23:03,bridge=vmbr12"   # ether3 -> WAN 2
-    config:
-      routeros:
-        identity: rt-s3-edge
-        addresses:
-          - address: "10.10.10.23/24"
-            interface: ether1
-          - address: "{{ lab_tr3_rt }}/30"
-            interface: ether2
-          - address: "{{ lab_wan2_spoke }}/30"
-            interface: ether3
-        dhcp_client: false
-        routes:
-          - dst_address: "0.0.0.0/0"
-            gateway: "{{ lab_wan2_hub }}"
-          - dst_address: "{{ lab_site3_network }}"
-            gateway: "{{ lab_tr3_fw }}"
-          - dst_address: "{{ lab_control_network }}"
-            gateway: "{{ lab_mgmt_gateway }}"
 
 # ============================================================================
 # NOTA: no hay lista de "invitados parcialmente adoptados".
