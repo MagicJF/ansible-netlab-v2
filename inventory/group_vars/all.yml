@@ -34,6 +34,16 @@
 #   4. NOMBRES DESCRIPTIVOS: sw-s1-acc-01, rt-s2-edge, fw-s3-perim, pc-s1-01,
 #      fw-wan-edge, infra-bootstrap. El nombre dice el tipo, la sede y la
 #      función; no hay que consultar nada para saber qué es cada máquina.
+#
+#   5. LO QUE NO ESTÁ, A PROPÓSITO. Este manifiesto describe una EMPRESA, y sólo
+#      contiene eso: la topología de red, las estaciones de trabajo y el equipo
+#      que da de comer a los routers. Quedan fuera, y no se recrean:
+#        - `ct-forge-5f2a` (167): contenedor de pruebas del motor con atributos
+#          aleatorios. Servía para probar el framework, no forma parte del lab.
+#        - `wiki-tiddly` (131): el servidor de documentación de la v1.
+#        - `caddy` (101): invitado preexistente. No aparece aquí en ninguna lista.
+#      Los invitados de la v1 tampoco se declaran: la convergencia NUNCA borra,
+#      así que seguir corriendo no los altera. Se retiran a mano desde la UI.
 # ============================================================================
 
 pve_node: Proxmox
@@ -49,11 +59,11 @@ pve_node: Proxmox
 # legible un direccionamiento cuando crece.
 #
 #   10.10.10.1      el host Proxmox (NO es nuestro; es el gateway)
-#   10.10.10.2      caddy (invitado preexistente, fuera de este manifiesto)
+#   10.10.10.2      caddy (invitado preexistente, AJENO a este repositorio)
 #   10.10.10.11-19  switches      (ST = 13/23/33)
 #   10.10.10.21-29  routers       (ST = 12/22/32)
 #   10.10.10.31-39  firewalls     (ST = 11/21/31, y el de borde 91)
-#   10.10.10.41-49  servicios e infraestructura (ST = 09)
+#   10.10.10.41-49  infraestructura (ST = 09)
 # ---------------------------------------------------------------------------
 lab_mgmt_network: "10.10.10.0/24"
 lab_mgmt_gateway: "10.10.10.1"
@@ -153,8 +163,10 @@ pve_tunnel:
 # declararse se quedan en el host y se retiran por la API.
 #
 # Se reutilizan vmbr4..vmbr17 (ya existen en el nodo) y se añaden vmbr18..21.
-# OJO: el comentario de un bridge que YA existe no se reescribe (es cosmético y
-# el motor no lo actualiza): los heredados conservan su comentario antiguo.
+# El comentario de los segmentos que YA existen no lo reescribe el motor (sólo
+# crea), así que lo pone este repositorio con una llamada aparte
+# (playbooks/tools/segment_comments.py), que es lo que hace que los comentarios
+# de la v2 se lean también en la interfaz de Proxmox.
 # ---------------------------------------------------------------------------
 pve_bridges:
   # ---- SEDE 1 (central) -----------------------------------------------------
@@ -223,7 +235,8 @@ pve_defaults:
   # ---- behaviour (converged in place) --------------------------------------
   onboot: false
   description: "Managed by ansible-netlab-v2. Declare changes in inventory/group_vars/all.yml."
-  tags: [ansible-managed, lab, netlab]
+  # Etiqueta base; cada invitado AÑADE las suyas (sede y papel) a esta lista.
+  tags: [netlab, ansible-managed]
   timezone: host
   cmode: shell
   features: []
@@ -246,7 +259,11 @@ pve_defaults:
 # from this list is never read, created or modified.
 pve_containers:
   # ==========================================================================
-  # 09xx — INFRAESTRUCTURA Y SERVICIOS (transversal a las sedes)
+  # 09xx — INFRAESTRUCTURA
+  #
+  # Lo mínimo para que el laboratorio nazca: el equipo que da a los routers su
+  # primera dirección. No hay más servicios: esto describe una red de empresa,
+  # no un parque de aplicaciones.
   # ==========================================================================
 
   # infra-bootstrap: concede a cada equipo de red su primera dirección por DHCP,
@@ -261,7 +278,7 @@ pve_containers:
     swap: 256
     onboot: true
     startup: ["order=1"]
-    tags: [netlab, bootstrap, infra]
+    tags: [netlab, ansible-managed, infra, bootstrap, dhcp, sin-sede]
     description: "Da a cada equipo de red su primera direccion por DHCP (atada a su MAC). No hace nada mas."
     netif:
       net0: "name=eth0,bridge=vmbr1,gw=10.10.10.1,ip=10.10.10.41/24"
@@ -290,52 +307,6 @@ pve_containers:
           {%- endfor -%}
           {{ out }}
 
-  # srv-wiki: el servidor de documentación de la empresa. Capa 1 posee la forma
-  # del contenedor; capa 2 posee el wiki y el servicio que lo sirve.
-  - vmid: 902
-    hostname: srv-wiki
-    cores: 1
-    memory: 1024
-    rootfs_size: 6
-    swap: 512
-    tags: [netlab, wiki, servicio]
-    description: "Servidor de documentacion (TiddlyWiki). La forma la posee capa 1; el wiki y su servicio, capa 2."
-    netif:
-      net0: "name=eth0,bridge=vmbr1,gw=10.10.10.1,ip=10.10.10.42/24,ip6=auto"
-    manage: true
-    config:
-      tiddlywiki:
-        wiki_dir: /srv/tiddlywiki
-        port: 8080
-        version: "5.4.1"
-        service_user: tiddlywiki
-        # 0.0.0.0 lo hace alcanzable desde la LAN (es el sentido de servirlo).
-        # Un TiddlyWiki servido es escribible y no tiene autenticación: es una
-        # decisión de exposición explícita, y por eso vive en una red que no es
-        # pública (vmbr1, la LAN de gestión).
-        listen_host: "0.0.0.0"
-      http:
-        - address: ":8080"
-          expect_status: 200
-          expect_body: "TiddlyWiki"
-
-  # obs-canary: el contenedor de observabilidad. Existe para probar el motor
-  # (atributos no por defecto) y para tener algo que leer cuando se sospecha del
-  # framework. En la v1 vivía en vmbr0, el bridge PÚBLICO: aquí se mueve a la
-  # LAN de gestión, porque ningún invitado del laboratorio va en vmbr0.
-  - vmid: 903
-    hostname: obs-canary
-    cores: 2
-    memory: 512
-    rootfs_size: 5
-    swap: 256
-    onboot: true
-    tags: [netlab, canary, obs]
-    description: "Contenedor de observabilidad: prueba el motor con atributos no por defecto."
-    netif:
-      net0: "name=eth0,bridge=vmbr1,gw=10.10.10.1,ip=10.10.10.43/24"
-    nameserver: 9.9.9.9
-
   # ==========================================================================
   # 14xx / 24xx / 34xx — LAS OCHO WORKSTATIONS
   #
@@ -356,7 +327,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede1]
+    tags: [netlab, ansible-managed, workstation, sede1, central]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -377,7 +348,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede1]
+    tags: [netlab, ansible-managed, workstation, sede1, central]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -398,7 +369,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede1]
+    tags: [netlab, ansible-managed, workstation, sede1, central]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -419,7 +390,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede1]
+    tags: [netlab, ansible-managed, workstation, sede1, central]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -440,7 +411,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede2]
+    tags: [netlab, ansible-managed, workstation, sede2, delegacion]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -461,7 +432,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede2]
+    tags: [netlab, ansible-managed, workstation, sede2, delegacion]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -482,7 +453,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede3]
+    tags: [netlab, ansible-managed, workstation, sede3, delegacion]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -503,7 +474,7 @@ pve_containers:
     memory: 256
     rootfs_size: 4
     swap: 256
-    tags: [netlab, workstation, sede3]
+    tags: [netlab, ansible-managed, workstation, sede3, delegacion]
     onboot: true
     startup: ["order=3"]
     manage: true
@@ -553,7 +524,8 @@ pve_vm_defaults:
 # CHR (MikroTik RouterOS) — valores por defecto de TODO equipo de red.
 #
 # Aquí viven el sabor, el orden de arranque y la forma común, porque los equipos
-# de red son once y repetir eso en cada uno es pedir que se desincronicen.
+# de red son once y repetir eso en cada uno es pedir que se desincronicen. Cada
+# equipo AÑADE sus propias etiquetas (sede y papel) sin repetir estas.
 #
 # Los equipos de red van ANTES que las workstations: la petición DHCP de una
 # workstation la contesta el firewall de su sede, así que arrancarlos juntos es
@@ -574,7 +546,7 @@ pve_chr_defaults:
   manage: true
   cloudinit: false
   description: "MikroTik RouterOS: una funcion de red, un equipo. Gestionado por REST."
-  tags: [netlab, routeros, red]
+  tags: [netlab, routeros, red, ansible-managed]
 
 pve_vms:
   # ==========================================================================
@@ -587,6 +559,7 @@ pve_vms:
   - vmid: 1301
     name: sw-s1-acc-01
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, switch, sede1, central]
     net:
       net0: "virtio=BC:24:11:00:31:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:31:02,bridge=vmbr4"    # ether2 -> pc-s1-01
@@ -616,6 +589,7 @@ pve_vms:
   - vmid: 1302
     name: sw-s1-acc-02
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, switch, sede1, central]
     net:
       net0: "virtio=BC:24:11:00:32:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:32:02,bridge=vmbr6"    # ether2 -> pc-s1-03
@@ -639,6 +613,7 @@ pve_vms:
   - vmid: 2301
     name: sw-s2-acc-01
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, switch, sede2, delegacion]
     net:
       net0: "virtio=BC:24:11:00:33:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:33:02,bridge=vmbr14"   # ether2 -> pc-s2-01
@@ -662,6 +637,7 @@ pve_vms:
   - vmid: 3301
     name: sw-s3-acc-01
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, switch, sede3, delegacion]
     net:
       net0: "virtio=BC:24:11:00:34:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:34:02,bridge=vmbr18"   # ether2 -> pc-s3-01
@@ -698,6 +674,7 @@ pve_vms:
   - vmid: 1101
     name: fw-s1-perim
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede1, central]
     net:
       net0: "virtio=BC:24:11:00:41:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:41:02,bridge=vmbr9"    # ether2 -> sw-s1-acc-01 (LAN de la sede)
@@ -762,6 +739,7 @@ pve_vms:
   - vmid: 2101
     name: fw-s2-perim
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede2, delegacion]
     net:
       net0: "virtio=BC:24:11:00:42:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:42:02,bridge=vmbr16"   # ether2 -> sw-s2-acc-01 (LAN de la sede)
@@ -816,6 +794,7 @@ pve_vms:
   - vmid: 3101
     name: fw-s3-perim
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, perimetro, sede3, delegacion]
     net:
       net0: "virtio=BC:24:11:00:43:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:43:02,bridge=vmbr20"   # ether2 -> sw-s3-acc-01 (LAN de la sede)
@@ -876,6 +855,7 @@ pve_vms:
   - vmid: 9101
     name: fw-wan-edge
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, firewall, borde, internet, sin-sede]
     net:
       net0: "virtio=BC:24:11:00:49:01,bridge=vmbr1"    # ether1 -> "proveedor" (red de gestion)
       net1: "virtio=BC:24:11:00:49:02,bridge=vmbr13"   # ether2 -> rt-s1-core (transito de borde)
@@ -921,6 +901,7 @@ pve_vms:
   - vmid: 1201
     name: rt-s1-core
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, router, nucleo, sede1, central]
     net:
       net0: "virtio=BC:24:11:00:21:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:21:02,bridge=vmbr10"   # ether2 -> fw-s1-perim (LAN de la sede 1)
@@ -964,6 +945,7 @@ pve_vms:
   - vmid: 2201
     name: rt-s2-edge
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, router, sede2, delegacion]
     net:
       net0: "virtio=BC:24:11:00:22:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:22:02,bridge=vmbr17"   # ether2 -> fw-s2-perim
@@ -991,6 +973,7 @@ pve_vms:
   - vmid: 3201
     name: rt-s3-edge
     chr: true
+    tags: [netlab, routeros, red, ansible-managed, router, sede3, delegacion]
     net:
       net0: "virtio=BC:24:11:00:23:01,bridge=vmbr1"    # ether1 gestion
       net1: "virtio=BC:24:11:00:23:02,bridge=vmbr21"   # ether2 -> fw-s3-perim
@@ -1015,17 +998,13 @@ pve_vms:
             gateway: "{{ lab_mgmt_gateway }}"
 
 # ============================================================================
-# INVITADOS PARCIALMENTE ADOPTADOS
+# NOTA: no hay lista de "invitados parcialmente adoptados".
 #
-# Capa 1 NUNCA lee esta lista. Son invitados que configura capa 2 desde dentro
-# mientras su forma en PVE queda sin gestionar: adopción parcial, declarada en
-# vez de implícita.
+# La v1 traía `pve_config_targets` con el caddy (101) dentro. Aquí no existe:
+# ese invitado es AJENO a este repositorio y no aparece en ninguna lista. Si
+# algún día hay que configurar un invitado preexistente desde capa 2, se
+# declara aquí y se explica por qué.
 # ============================================================================
-pve_config_targets:
-  - vmid: 101
-    hostname: caddy
-    address: 10.10.10.2
-    manage: false
 
 # ============================================================================
 # TIEMPOS DE ENERGÍA (verbos apply/preflight)
