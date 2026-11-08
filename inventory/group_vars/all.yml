@@ -906,6 +906,16 @@ pve_vms:
             - {chain: forward, action: accept, in_interface: ether4, out_interface: ether5}
             - {chain: forward, action: accept, in_interface: ether3, out_interface: ether4}
             - {chain: forward, action: accept, in_interface: ether4, out_interface: ether3}
+            # Y las VUELTAS desde el borde hacia cada delegación. No basta con
+            # `established,related`: el paquete que pregunta al borde por su
+            # dirección de gestión va DIRECTO por la LAN de gestión (el router de
+            # la delegación la tiene conectada), así que este firewall nunca vio
+            # esa conversación y no tiene estado que reconocer. La respuesta sí
+            # vuelve por aquí —el borde sólo conoce las sedes por el tránsito— y
+            # sin estas dos reglas muere en el `drop`. Lo destapó lab-check
+            # ejecutado DESDE una delegación: 18/19, y el que faltaba era el borde.
+            - {chain: forward, action: accept, in_interface: ether5, out_interface: ether3}
+            - {chain: forward, action: accept, in_interface: ether5, out_interface: ether4}
             - {chain: forward, action: drop}
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}

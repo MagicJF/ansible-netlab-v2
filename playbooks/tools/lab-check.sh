@@ -4,9 +4,9 @@
 #
 # No se configura ni se le pasa nada: mira su PROPIA dirección, deduce en qué
 # sede está y quién es su puerta de enlace, y comprueba que la red se comporta
-# como la topología dice. Se ejecuta igual en ws1 que en ws8.
+# como la topología dice. Se ejecuta igual en pc-s1-01 que en pc-s3-02.
 #
-# Por cada uno de los otros 15 dispositivos del lab:
+# Por cada uno de los otros 19 dispositivos del lab:
 #   1 ALCANCE      ¿contesta?  (el último salto del traceroute es el destino)
 #   2 PRIMER SALTO ¿el primer salto es MI puerta de enlace declarada?
 #   3 CAMINO       ¿los saltos intermedios son los que predice la topología?
@@ -18,20 +18,31 @@ set -u
 
 # --- el mapa del lab: nombre, dirección, sede (0 = red de gestión), tipo -----
 # Una sola verdad: de aquí salen a la vez los destinos y la identidad propia.
-LAB="ws1 10.11.0.11 1 pc;ws2 10.11.0.12 1 pc;ws3 10.11.0.13 1 pc;ws4 10.11.0.14 1 pc"
-LAB="$LAB;ws5 10.12.0.11 2 pc;ws6 10.12.0.12 2 pc;ws7 10.13.0.11 3 pc;ws8 10.13.0.12 3 pc"
-LAB="$LAB;sw1 10.10.10.160 0 sw;sw2 10.10.10.161 0 sw;rt1 10.10.10.162 0 rt"
-LAB="$LAB;sw3 10.10.10.163 0 sw;rt2 10.10.10.164 0 rt;sw4 10.10.10.165 0 sw"
-LAB="$LAB;rt3 10.10.10.166 0 rt;boot 10.10.10.53 0 boot"
+LAB="pc-s1-01 10.11.0.11 1 pc;pc-s1-02 10.11.0.12 1 pc"
+LAB="$LAB;pc-s1-03 10.11.0.13 1 pc;pc-s1-04 10.11.0.14 1 pc"
+LAB="$LAB;pc-s2-01 10.12.0.11 2 pc;pc-s2-02 10.12.0.12 2 pc"
+LAB="$LAB;pc-s3-01 10.13.0.11 3 pc;pc-s3-02 10.13.0.12 3 pc"
+LAB="$LAB;sw-s1-acc-01 10.10.10.11 0 sw;sw-s1-acc-02 10.10.10.12 0 sw"
+LAB="$LAB;sw-s2-acc-01 10.10.10.13 0 sw;sw-s3-acc-01 10.10.10.14 0 sw"
+LAB="$LAB;rt-s1-core 10.10.10.21 0 rt;rt-s2-edge 10.10.10.22 0 rt;rt-s3-edge 10.10.10.23 0 rt"
+LAB="$LAB;fw-s1-perim 10.10.10.31 0 fw;fw-s2-perim 10.10.10.32 0 fw"
+LAB="$LAB;fw-s3-perim 10.10.10.33 0 fw;fw-wan-edge 10.10.10.34 0 fw"
+LAB="$LAB;infra-bootstrap 10.10.10.41 0 boot"
 
 # --- la topología: quién es quién y por dónde se cruza -----------------------
+# En la v2 la LAN de la sede cuelga de su ROUTER (el router es la puerta y el
+# servidor DHCP), y el FIREWALL se interpone entre el router y la WAN. Por eso
+# el tránsito entre sedes tiene CUATRO saltos y no dos: el paquete entra y sale
+# por dos firewalls además de los dos routers.
 GW_1=10.11.0.1; GW_2=10.12.0.1; GW_3=10.13.0.1   # la puerta de cada sede
-W_1_2=10.99.1.1; W_2_1=10.99.1.2                  # WAN 1: rt1 <-> rt2
-W_1_3=10.99.2.1; W_3_1=10.99.2.2                  # WAN 2: rt1 <-> rt3
+TR_1=10.21.0.1; TR_2=10.22.0.1; TR_3=10.23.0.1   # el router entrega al FIREWALL
+TR_1_R=10.21.0.2; TR_2_R=10.22.0.2; TR_3_R=10.23.0.2  # y el firewall, al router
+W1_HUB=10.99.1.1; W1_SPOKE=10.99.1.2   # WAN 1: fw-s1-perim <-> fw-s2-perim
+W2_HUB=10.99.2.1; W2_SPOKE=10.99.2.2   # WAN 2: fw-s1-perim <-> fw-s3-perim
 # El router de cada sede, por su dirección de GESTIÓN. Hace falta porque un
 # paquete dirigido a él tiene al propio router como primer y último salto: no
 # hay ningún salto intermedio que exigirle.
-RT_1=10.10.10.162; RT_2=10.10.10.164; RT_3=10.10.10.166
+RT_1=10.10.10.21; RT_2=10.10.10.22; RT_3=10.10.10.23
 
 rt_of() { case "$1" in 1) echo "$RT_1";; 2) echo "$RT_2";; 3) echo "$RT_3";; esac; }
 es_mi_puerta() { [ "$1" = "$MY_GW" ] || [ "$1" = "$(rt_of "$MY_SITE")" ]; }
@@ -45,12 +56,12 @@ esperado() {
   case "$1-$2" in
     1-0|2-0|3-0) gw_of "$1" ;;                    # a la gestión: sólo mi router
     1-1|2-2|3-3) : ;;                             # mi sede: L2 directo, 0 saltos
-    1-2) echo "$GW_1 $W_2_1" ;;
-    1-3) echo "$GW_1 $W_3_1" ;;
-    2-1) echo "$GW_2 $W_1_2" ;;
-    2-3) echo "$GW_2 $W_1_2 $W_3_1" ;;
-    3-1) echo "$GW_3 $W_1_3" ;;
-    3-2) echo "$GW_3 $W_1_3 $W_2_1" ;;
+    1-2) echo "$GW_1 $TR_1 $W1_SPOKE $TR_2_R" ;;
+    1-3) echo "$GW_1 $TR_1 $W2_SPOKE $TR_3_R" ;;
+    2-1) echo "$GW_2 $TR_2 $W1_HUB $TR_1_R" ;;
+    2-3) echo "$GW_2 $TR_2 $W1_HUB $W2_SPOKE $TR_3_R" ;;
+    3-1) echo "$GW_3 $TR_3 $W2_HUB $TR_1_R" ;;
+    3-2) echo "$GW_3 $TR_3 $W2_HUB $W1_SPOKE $TR_2_R" ;;
   esac
 }
 
@@ -149,8 +160,8 @@ echo "--- RESUMEN $ME ---"
 printf '  alcance      : %d/%d destinos contestan\n' "$ok_reach" "$total"
 printf '  primer salto : %d/%d por mi puerta (%d en mi propia sede exentos)\n' "$ok_first" "$exigidos" "$exempt"
 printf '  camino       : %d/%d de los que contestan\n' "$ok_path" "$ok_reach"
-for k in pc rt sw boot; do
-  case "$k" in pc) lbl="workstations";; rt) lbl="routers     ";; sw) lbl="switches    ";; boot) lbl="bootstrap   ";; esac
+for k in pc rt fw sw boot; do
+  case "$k" in pc) lbl="workstations";; rt) lbl="routers     ";; fw) lbl="firewalls   ";; sw) lbl="switches    ";; boot) lbl="bootstrap   ";; esac
   tot=$(printf '%s' "$por_tipo" | awk -v k="$k" '$1==k' | wc -l)
   oks=$(printf '%s' "$por_tipo" | awk -v k="$k" '$1==k && $2=="OK"' | wc -l)
   [ "$tot" -gt 0 ] && printf '    %s : %d/%d contestan\n' "$lbl" "$oks" "$tot"
@@ -173,7 +184,7 @@ echo
 echo "### PEGA ESTO ###"
 echo "ws=$ME ip=$MY_IP sede=$MY_SITE host=$MY_HOST gw=${DEF_GW:-ninguna}(esp $MY_GW)"
 echo "alcance=$ok_reach/$total primer_salto=$ok_first/$exigidos camino=$ok_path/$ok_reach"
-for k in pc rt sw boot; do
+for k in pc rt fw sw boot; do
   tot=$(printf '%s' "$por_tipo" | awk -v k="$k" '$1==k' | wc -l)
   oks=$(printf '%s' "$por_tipo" | awk -v k="$k" '$1==k && $2=="OK"' | wc -l)
   [ "$tot" -gt 0 ] && echo "$k=$oks/$tot"
@@ -181,6 +192,7 @@ done
 printf '%s' "$anomalias" | sed 's/^/ANOM /'
 echo "### FIN ###"
 
-# El código de salida sólo mira lo que DEBE funcionar: workstations y routers.
-malos=$(printf '%s' "$por_tipo" | awk '$1=="pc"||$1=="rt"' | grep -c NO)
+# El código de salida sólo mira lo que DEBE funcionar: workstations, routers y
+# firewalls. Los switches y el bootstrap son la excepción conocida.
+malos=$(printf '%s' "$por_tipo" | awk '$1=="pc"||$1=="rt"||$1=="fw"' | grep -c NO)
 [ "$malos" = "0" ] && [ "$ok_first" = "$exigidos" ] && exit 0 || exit 1
