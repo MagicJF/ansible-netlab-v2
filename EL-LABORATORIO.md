@@ -283,6 +283,28 @@ está y quién debe ser su puerta de enlace.
 
 ---
 
+## Lo que se ve en la interfaz de Proxmox
+
+Cada invitado lleva **tres etiquetas y ni una más**: quién lo gestiona (`ansible-managed`),
+qué es (`firewall`, `router`, `switch`, `workstation`, `bootstrap`) y dónde está
+(`central`, `delegacion`, `borde`, `infra`). Nada de vocabulario que no responda a una
+de esas tres preguntas.
+
+Esas etiquetas están **coloreadas en el datacenter** (opción `tag-style`, declarada en
+`pve_tag_style` y convergida por `apply.yml`). El color dice dos cosas sin abrir nada: el
+**rojo** es "gestionado por este repositorio", y el resto agrupa por función y por sede.
+PVE guarda las etiquetas ordenadas alfabéticamente; el motor compara **conjuntos
+ordenados**, así que el orden en que se declaren no produce deriva.
+
+La **nota** de cada máquina no es un adorno: es HTML y se **genera desde la propia
+declaración** con `playbooks/tools/pve_notas.py`. Lleva la tabla de conexiones (qué pata
+va a qué bridge y con quién la comparte, incluidas las MAC), el direccionamiento, el
+bloque RouterOS ya con sus referencias resueltas, el camino real hasta internet y **por
+qué** cada pieza es como es. Como sale del manifiesto, no puede contradecirlo: si un día
+la nota dijera otro puerto que la declaración, sería el generador el que estaría roto.
+
+---
+
 ## Cuánto costó ponerlo en pie
 
 Los dos registros que el motor escribe mientras trabaja —el **diario** de llamadas

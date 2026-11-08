@@ -61,6 +61,7 @@ playbooks/tasks/                       # engine: shared steps (segments, disk im
 playbooks/tools/pve_read.py            # engine: reads every guest + platform facts in ONE process
 playbooks/tools/framework_check.py     # the framework's own test: convergent, and sees drift
 playbooks/tools/logs_prune.py          # engine: retention for logs/, applied by every verb
+playbooks/tools/pve_notas.py           # engine: generates the HTML note + the tags, from the declaration
 playbooks/tools/wg_endpoint_setup.sh   # layer 2 path: the endpoint bootstrap, run once on the PVE host
 playbooks/tracing/sitecustomize.py     # engine: journals every PVE HTTP call
 filter_plugins/pve.py                  # engine: canonicalisation filters used by the macros
@@ -156,8 +157,8 @@ Declared per container, inherited from `pve_defaults` unless overridden:
 | `status` | `stopped` by default, `started` per guest | yes — the container is stopped/started to match |
 | `cmode` | `shell` | yes |
 | `timezone` | `host` | yes |
-| `description` | see file | yes |
-| `tags` | `[ansible-managed, lab]`, plus per-guest tags | yes |
+| `description` | HTML note, **generated** by `playbooks/tools/pve_notas.py` | yes |
+| `tags` | `[ansible-managed, <role>, <site>]` — three, no more | yes |
 | `features`, `startup` | `[]` (must not exist) | yes — deleted if present |
 | `netif` | `{}` by default; declared per guest | yes — declared interfaces are created, undeclared ones are deleted |
 | `mounts`, `mount_devices` | `{}`, `[]` (must not exist) | yes — deleted if present |

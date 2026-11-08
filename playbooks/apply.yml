@@ -199,6 +199,10 @@
     - name: Converge the declared host segments (pve_bridges)
       ansible.builtin.include_tasks: tasks/bridges.yml
 
+    # ---- the datacenter's colour scheme, before the guests are tagged -----
+    - name: Converge the declared tag style (pve_tag_style)
+      ansible.builtin.include_tasks: tasks/tag_style.yml
+
     # ---- mutate, only what drifted ---------------------------------------
     - name: Create the containers that do not exist yet
       community.proxmox.proxmox:
