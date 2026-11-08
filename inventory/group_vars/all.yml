@@ -887,8 +887,12 @@ pve_vms:
           - dst_address: "0.0.0.0/0"
             gateway: "{{ lab_edge_fw }}"
         # Perímetro: lo establecido pasa, y el tráfico de su sede puede salir y
-        # volver por cada una de sus tres bocas. Lo demás que se inicia, se
-        # descarta.
+        # volver por cada una de sus bocas. Además, la central es el punto por el
+        # que una delegación llega al borde (y a la otra delegación), así que sus
+        # bocas EXTERIORES también pueden hablar entre sí: sin esas reglas el
+        # tráfico de la sede 2 hacia internet entra por ether3 y muere en el
+        # `drop` porque nadie le dio salida por ether5. Lo destapó la prueba de
+        # conectividad, no la lectura del fichero.
         firewall:
           filter:
             - {chain: forward, action: accept, connection_state: "established,related"}
@@ -898,6 +902,10 @@ pve_vms:
             - {chain: forward, action: accept, in_interface: ether3, out_interface: ether2}
             - {chain: forward, action: accept, in_interface: ether4, out_interface: ether2}
             - {chain: forward, action: accept, in_interface: ether5, out_interface: ether2}
+            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether5}
+            - {chain: forward, action: accept, in_interface: ether4, out_interface: ether5}
+            - {chain: forward, action: accept, in_interface: ether3, out_interface: ether4}
+            - {chain: forward, action: accept, in_interface: ether4, out_interface: ether3}
             - {chain: forward, action: drop}
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}

@@ -483,6 +483,15 @@
       no_log: true
       when: a.exists and (a.to_set | length > 0)
 
+    # ---- los discos importados, ANTES de la energia ----------------------
+    # Un disco importado nace al tamano de la imagen y el resize lo lleva al
+    # declarado. Va DELANTE de la energia a proposito: la energia es una
+    # espera que puede fallar, y si falla antes del resize los discos se
+    # quedan a 128 MiB y el plan siguiente los rechaza (el tamano de un disco
+    # es creation-time), dejando el verbo atascado.
+    - name: Grow the imported disk images to their declared size
+      ansible.builtin.include_tasks: tasks/disk_import.yml
+
     # ---- la energía, ya con todos los invitados creados ------------------------
     # Va después de crear ambos tipos porque la llamada en bloque es de Proxmox y
     # necesita que existan. Y va por escalones precisamente por el orden: es lo que
@@ -577,11 +586,6 @@
     - name: Wait for the workstations to hold their declared addresses
       ansible.builtin.include_tasks: tasks/lab_addresses.yml
       when: (pve_cts | selectattr('site', 'defined') | list | length) > 0
-
-    # ---- imported disks, once the VMs exist ------------------------------
-    - name: Grow the imported disk images to their declared size
-      ansible.builtin.include_tasks: tasks/disk_import.yml
-
     # ---- verify from a fresh read, once ----------------------------------
     - name: Re-read every declared guest (one process, one task)
       ansible.builtin.command:

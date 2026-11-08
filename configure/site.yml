@@ -97,6 +97,41 @@
         l2_answered: >-
           {{ l2_path_probe.results | rejectattr('failed') | map(attribute='item') | list }}
 
+# ---------------------------------------------------------------------------
+# ORDEN DE LOS PLAYS: los equipos de red PRIMERO.
+#
+# No es una preferencia. En este laboratorio el DHCP de la LAN de cada sede lo
+# sirve su ROUTER (tiene que estar en el mismo segmento de capa 2 que sus
+# clientes: el DHCP es broadcast y no cruza un router). Eso hace que las
+# estaciones DEPENDAN de los equipos de red: si se converge primero el
+# contenedor, la estación todavía no tiene dirección, el verbo se para en la
+# primera y los routers no llegan a configurarse nunca.
+# ---------------------------------------------------------------------------
+- name: Layer 2 - converge the guests that speak their own API
+  hosts: pve_api_targets
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Converge the declared RouterOS state
+      ansible.builtin.include_role:
+        name: routeros
+      when: l2_config.routeros is defined
+
+    - name: "Nothing to converge: the declaration is read-only for this guest"
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} is declared with manage false, so layer 2 only
+          audits it. Set manage true in the declaration when you are ready for it
+          to be converged.
+      when: not (l2_manage | bool)
+
+# ---------------------------------------------------------------------------
+# Verification from INSIDE the guests: the network lab exists so that a packet
+# can leave one segment, cross the router VM and come back from the other. That
+# proof needs EVERY guest converged, so it is a pass of its own — the play above
+# converges one guest at a time, and the first guest's peer is not configured
+# until the last one has run.
+# ---------------------------------------------------------------------------
 - name: Layer 2 - converge the inside of every managed guest
   hosts: pve_config_targets
   # No fact gathering: it runs before the reachability check, so an unreachable
@@ -185,31 +220,6 @@
 # ---------------------------------------------------------------------------
 # Guests that speak their own API instead of a POSIX shell (RouterOS). The role
 # runs on the control node and drives the guest's API; there is no SSH path.
-# ---------------------------------------------------------------------------
-- name: Layer 2 - converge the guests that speak their own API
-  hosts: pve_api_targets
-  gather_facts: false
-  serial: 1
-  tasks:
-    - name: Converge the declared RouterOS state
-      ansible.builtin.include_role:
-        name: routeros
-      when: l2_config.routeros is defined
-
-    - name: "Nothing to converge: the declaration is read-only for this guest"
-      ansible.builtin.debug:
-        msg: >-
-          {{ inventory_hostname }} is declared with manage false, so layer 2 only
-          audits it. Set manage true in the declaration when you are ready for it
-          to be converged.
-      when: not (l2_manage | bool)
-
-# ---------------------------------------------------------------------------
-# Verification from INSIDE the guests: the network lab exists so that a packet
-# can leave one segment, cross the router VM and come back from the other. That
-# proof needs EVERY guest converged, so it is a pass of its own — the play above
-# converges one guest at a time, and the first guest's peer is not configured
-# until the last one has run.
 # ---------------------------------------------------------------------------
 - name: Layer 2 - verify the network lab from inside every guest
   hosts: pve_config_targets
