@@ -215,6 +215,79 @@
 {%-   endif -%}
 {%- endfor -%}
 
+{#- ---------- firewall: el filtrado y el NAT declarados ---------- -#}
+{#- Un RouterOS al que se le declara `firewall:` pero no se le converge no está
+    filtrado: está vacío. Aquí se compara lo declarado con lo que el equipo
+    responde y se emite un PUT por regla que falte y un DELETE por regla que
+    sobre.
+
+    Dos cosas que importan:
+      - El ORDEN es posicional (la primera regla que casa decide), así que las
+        reglas se CREAN en el orden declarado. RouterOS añade al final, de modo
+        que crear en orden deja el orden declarado. La verificación comprueba el
+        orden y falla si no coincide, en vez de reordenar a ciegas.
+      - Las reglas `dynamic` NO se tocan: son contabilidad del propio equipo
+        (una entrada que RouterOS se crea sola), no configuración de nadie.
+    La nomenclatura de la declaración es la del repositorio (snake_case) y se
+    traduce aquí a la de RouterOS (kebab-case) en un solo sitio. -#}
+{%- macro ros_rule_body(r) -%}
+{%-   set b = {'chain': r.chain, 'action': r.action} -%}
+{%-   if r.connection_state is defined -%}{%- set _ = b.update({'connection-state': r.connection_state}) -%}{%- endif -%}
+{%-   if r.in_interface is defined -%}{%- set _ = b.update({'in-interface': r.in_interface}) -%}{%- endif -%}
+{%-   if r.out_interface is defined -%}{%- set _ = b.update({'out-interface': r.out_interface}) -%}{%- endif -%}
+{{ b | to_json }}
+{%- endmacro -%}
+{%- macro same_rule(b, l) -%}
+{%-   set equal = ((l.chain | default('') | string) == (b['chain'] | default('') | string))
+                  and ((l.action | default('') | string) == (b['action'] | default('') | string))
+                  and ((l['connection-state'] | default('') | string) == (b['connection-state'] | default('') | string))
+                  and ((l['in-interface'] | default('') | string) == (b['in-interface'] | default('') | string))
+                  and ((l['out-interface'] | default('') | string) == (b['out-interface'] | default('') | string)) -%}
+{{ '1' if equal else '0' }}
+{%- endmacro -%}
+{%- set decl_filter = (cfg.firewall | default({})).filter | default([]) -%}
+{%- set decl_nat = (cfg.firewall | default({})).nat | default([]) -%}
+{#- Las reglas `dynamic` se dejan fuera con un bucle explícito y no con
+    `rejectattr('dynamic', ...)`: una regla que NO trae ese atributo hace que el
+    test se evalúe sobre un undefined y reviente (el undefined de Ansible es
+    estricto), y eso convertiría una lectura normal en un fallo del rol. -#}
+{%- set live_filter = [] -%}
+{%- for l in ros.firewall_filter | default([]) -%}
+{%-   if ((l.dynamic | default('false')) | string | lower) != 'true' -%}
+{%-     set _ = live_filter.append(l) -%}
+{%-   endif -%}
+{%- endfor -%}
+{%- set live_nat = [] -%}
+{%- for l in ros.firewall_nat | default([]) -%}
+{%-   if ((l.dynamic | default('false')) | string | lower) != 'true' -%}
+{%-     set _ = live_nat.append(l) -%}
+{%-   endif -%}
+{%- endfor -%}
+{%- set fw_menus = [('ip/firewall/filter', decl_filter, live_filter),
+                    ('ip/firewall/nat', decl_nat, live_nat)] -%}
+{%- for menu, decl, live in fw_menus -%}
+{%-   for r in decl -%}
+{%-     set body = ros_rule_body(r) | from_json -%}
+{%-     set ns = namespace(found=false) -%}
+{%-     for l in live -%}
+{%-       if not ns.found and (same_rule(body, l) | trim) == '1' -%}{%- set ns.found = true -%}{%- endif -%}
+{%-     endfor -%}
+{%-     if not ns.found -%}
+{%-       set _ = ops.append({'method': 'PUT', 'path': menu, 'body': body}) -%}
+{%-     endif -%}
+{%-   endfor -%}
+{%-   for l in live -%}
+{%-     set ns = namespace(keep=false) -%}
+{%-     for r in decl -%}
+{%-       set body = ros_rule_body(r) | from_json -%}
+{%-       if not ns.keep and (same_rule(body, l) | trim) == '1' -%}{%- set ns.keep = true -%}{%- endif -%}
+{%-     endfor -%}
+{%-     if not ns.keep and ((l['.id'] | default('')) | length > 0) -%}
+{%-       set _ = ops.append({'method': 'DELETE', 'path': menu ~ '/' ~ l['.id']}) -%}
+{%-     endif -%}
+{%-   endfor -%}
+{%- endfor -%}
+
 {#- ---------- identity ---------- -#}
 {%- if ros_identity_name | default('') != cfg.identity -%}
 {%-   set _ = ops.append({'method': 'POST', 'path': 'system/identity/set',

@@ -80,6 +80,12 @@ routeros_tables:
   - {key: bridge_ports, path: interface/bridge/port}
   - {key: addresses, path: ip/address}
   - {key: routes, path: ip/route}
+  # Marcados como reclamados por la declaración: un firewall RouterOS tiene que
+  # declarar su filtrado y su NAT, y si estos menús no estuvieran aquí la
+  # comprobación de `export` (framework_check.py) los leería como configuración
+  # que nadie reclamó y tumbaría la comprobación — con razón.
+  - {key: firewall_filter, path: ip/firewall/filter}
+  - {key: firewall_nat, path: ip/firewall/nat}
   - {key: dhcp_clients, path: ip/dhcp-client}
   - {key: pools, path: ip/pool}
   - {key: dhcp_servers, path: ip/dhcp-server}

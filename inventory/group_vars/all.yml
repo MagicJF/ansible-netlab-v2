@@ -732,8 +732,8 @@ pve_vms:
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}
             - {chain: input, action: drop}
-        nat:
-          - {chain: srcnat, action: masquerade, out_interface: ether3}
+          nat:
+            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
   # fw-s2-perim: perímetro de la delegación 2.
   - vmid: 2101
@@ -787,8 +787,8 @@ pve_vms:
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}
             - {chain: input, action: drop}
-        nat:
-          - {chain: srcnat, action: masquerade, out_interface: ether3}
+          nat:
+            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
   # fw-s3-perim: perímetro de la delegación 3.
   - vmid: 3101
@@ -842,8 +842,8 @@ pve_vms:
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}
             - {chain: input, action: drop}
-        nat:
-          - {chain: srcnat, action: masquerade, out_interface: ether3}
+          nat:
+            - {chain: srcnat, action: masquerade, out_interface: ether3}
 
   # fw-wan-edge: el firewall de BORDE. Es el único que sale de la empresa.
   #
@@ -887,8 +887,8 @@ pve_vms:
             - {chain: input, action: accept, in_interface: ether1}
             - {chain: input, action: accept, connection_state: "established,related"}
             - {chain: input, action: drop}
-        nat:
-          - {chain: srcnat, action: masquerade, out_interface: ether1}
+          nat:
+            - {chain: srcnat, action: masquerade, out_interface: ether1}
 
   # ==========================================================================
   # ROUTERS (ST = 2S) — enrutan DENTRO de la empresa. No filtran y no sirven

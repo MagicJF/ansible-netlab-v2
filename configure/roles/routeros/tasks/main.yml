@@ -278,6 +278,66 @@
   changed_when: false
   when: routeros_password_to_set | length > 0
 
+# --- verify: el filtrado y el NAT, releyendo el equipo---
+# Se compara lo declarado con lo que el equipo responde DESPUÉS de escribir, en
+# dos formas: como conjunto (¿están todas y no sobra ninguna?) y como secuencia
+# (¿en el mismo orden?). El orden no es un detalle de estilo: en un firewall la
+# primera regla que casa decide, así que dos equipos con las mismas reglas en
+# distinto orden filtran distinto. Se comprueba; no se reordena a ciegas.
+- name: Reduce the declared firewall and the router's to comparable rows
+  ansible.builtin.set_fact:
+    fw_declared_rows: >-
+      {%- set out = [] -%}
+      {%- for menu, rules in [('filter', (l2_config.routeros.firewall | default({})).filter | default([])),
+                              ('nat', (l2_config.routeros.firewall | default({})).nat | default([]))] -%}
+      {%-   for r in rules -%}
+      {%-     set _ = out.append(menu ~ '|' ~ (r.chain | default('')) ~ '|' ~ (r.action | default(''))
+                     ~ '|' ~ (r.connection_state | default('')) ~ '|' ~ (r.in_interface | default(''))
+                     ~ '|' ~ (r.out_interface | default(''))) -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ out }}
+    fw_live_rows: >-
+      {%- set out = [] -%}
+      {%- for menu, key in [('filter', 'firewall_filter'), ('nat', 'firewall_nat')] -%}
+      {%-   for l in (ros_after[key] | default([]))
+                 if ((l.dynamic | default('false')) | string | lower) != 'true' -%}
+      {%-     set _ = out.append(menu ~ '|' ~ (l.chain | default('')) ~ '|' ~ (l.action | default(''))
+                     ~ '|' ~ (l['connection-state'] | default('')) ~ '|' ~ (l['in-interface'] | default(''))
+                     ~ '|' ~ (l['out-interface'] | default(''))) -%}
+      {%-   endfor -%}
+      {%- endfor -%}
+      {{ out }}
+  when: l2_config.routeros.firewall is defined
+  changed_when: false
+
+- name: The router must carry exactly the declared firewall rules
+  ansible.builtin.assert:
+    that:
+      - fw_declared_rows | sort == fw_live_rows | sort
+    fail_msg: >-
+      Las reglas del firewall no coinciden con lo declarado.
+      declarado ({{ fw_declared_rows | length }}): {{ fw_declared_rows | join(' ; ') }}
+      el equipo ({{ fw_live_rows | length }}): {{ fw_live_rows | join(' ; ') }}
+    success_msg: >-
+      Las {{ fw_declared_rows | length }} regla(s) declaradas estan en el equipo,
+      y no hay ninguna que la declaracion no pida.
+  when: l2_config.routeros.firewall is defined
+  changed_when: false
+
+- name: The declared firewall order must be the router's order
+  ansible.builtin.assert:
+    that:
+      - fw_declared_rows == fw_live_rows
+    fail_msg: >-
+      El equipo tiene las reglas declaradas, pero en OTRO ORDEN. En un firewall
+      la primera regla que casa decide, asi que esto filtra distinto.
+      declarado: {{ fw_declared_rows | join(' ; ') }}
+      el equipo: {{ fw_live_rows | join(' ; ') }}
+    success_msg: "El orden del firewall es el declarado (importa: es posicional)."
+  when: l2_config.routeros.firewall is defined
+  changed_when: false
+
 - name: Report the outcome
   ansible.builtin.debug:
     msg: >-
