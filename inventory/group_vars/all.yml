@@ -222,9 +222,9 @@ pve_defaults:
   ostype: debian
 
   # ---- power state ---------------------------------------------------------
-  # started | stopped. Se declara `stopped`: el laboratorio se levanta cuando
-  # alguien lo pide con apply.yml, no por existir la declaración.
-  status: stopped
+  # started | stopped. En marcha: aplicar la declaración ES levantar el
+  # laboratorio, y ese es el sentido de tenerlo declarado.
+  status: started
 
   # ---- resources (converged in place) --------------------------------------
   memory: 2048
@@ -538,13 +538,38 @@ pve_chr_defaults:
   # (que es todo lo que hace) no necesita más, y ahora son once.
   cores: 1
   memory: 256
-  # Arrancado o parado se declara igual que en el resto: el laboratorio se
-  # levanta cuando alguien lo pide (apply.yml), no por existir la declaración.
-  # Se cambia a `started` para dejarlo declarado en marcha, que es la otra
-  # opción igual de válida.
-  status: stopped
+  # En marcha: aplicar la declaración ES levantar el laboratorio.
+  status: started
   manage: true
+  # La imagen del fabricante no tiene cloud-init, así que esa unidad sería peso
+  # muerto.
   cloudinit: false
+  # CHR es una imagen de la era i440fx: arranca en el chipset PC, no en q35.
+  machine: pc
+  # La imagen importada es el ÚNICO disco, así que es el dispositivo de arranque
+  # (el orden por defecto espera la unidad cloud-init que esta VM no tiene).
+  boot: "order=scsi0"
+  scsi:
+    # 1 GiB y no 8: la imagen del fabricante ocupa 128 MiB y RouterOS CHR vive en
+    # RAM, así que un disco grande aquí es espacio asignado que nadie usa.
+    scsi0: "local-zfs:1"
+  # La imagen del fabricante se IMPORTA en vez de crearse: proxmox_kvm sólo sabe
+  # construir un disco a partir de un tamaño, así que la imagen raw está subida a
+  # un storage que acepta `import` y se adjunta con la sintaxis import-from de la
+  # API en el momento de crear la VM (ver playbooks/tasks/disk_import.yml).
+  # `key` es el disco que la imagen rellena.
+  disk_import:
+    - key: scsi0
+      source: "local:import/chr-7.25.1.raw"
+  # La consola que respeta un teclado que no es US: lleva CARACTERES, no
+  # scancodes. `vga: serial0` es lo que hace que el botón Console de PVE abra
+  # esta consola en vez de un noVNC que no tiene nada que mostrar.
+  serial:
+    serial0: socket
+  vga: serial0
+  # SIN `keyboard:` a propósito: sólo cambiaría cómo el VNC convierte las teclas
+  # del navegador, y la última traducción es la del propio invitado (RouterOS es
+  # US y no tiene ajuste).
   description: "MikroTik RouterOS: una funcion de red, un equipo. Gestionado por REST."
   tags: [netlab, routeros, red, ansible-managed]
 
