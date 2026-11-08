@@ -283,6 +283,17 @@ está y quién debe ser su puerta de enlace.
 
 ---
 
+## Cuánto costó ponerlo en pie
+
+Los dos registros que el motor escribe mientras trabaja —el **diario** de llamadas
+HTTP y el **log** de Ansible— permiten contar el trabajo con números en vez de con
+impresiones: cuántas llamadas se hicieron a cada API, por equipo y por endpoint,
+cuántas tareas se ejecutaron en cada anfitrión y cuánto tardó cada verbo.
+
+**[`ESFUERZO.md`](ESFUERZO.md)** tiene las tablas. No está escrito a mano: lo genera
+`playbooks/tools/esfuerzo.py` a partir de esos dos registros, así que se puede
+volver a generar y auditar cuando haga falta.
+
 ## Lo que este laboratorio NO es
 
 - **El contenedor `infra-bootstrap` no es un equipo de la empresa simulada.** Es

@@ -631,6 +631,14 @@ grep '"method": "PUT"' logs/pve-api.jsonl | python3 -m json.tool --json-lines
 grep -E '"status": 4[0-9][0-9]|"status": 5[0-9][0-9]' logs/pve-api.jsonl
 ```
 
+### What it cost
+
+The journal and the play log are also the raw material for a **measured** account of
+what standing this lab up took: API calls per endpoint and per machine, task
+executions per host, and the wall-clock time of every verb. It is generated from
+those logs, never written by hand — [`ESFUERZO.md`](ESFUERZO.md) (Spanish, like the
+lab guide) plus `playbooks/tools/esfuerzo.py`.
+
 ### Retention
 
 Ansible only ever **appends** to its `log_path` — it never rotates it — so `logs/` is the one directory in this repository that grows on its own. It is bounded by a declared policy rather than by an operator remembering:
