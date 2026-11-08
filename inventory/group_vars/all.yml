@@ -566,7 +566,11 @@ pve_chr_defaults:
   # (que es todo lo que hace) no necesita más, y ahora son once.
   cores: 1
   memory: 256
-  status: started
+  # Arrancado o parado se declara igual que en el resto: el laboratorio se
+  # levanta cuando alguien lo pide (apply.yml), no por existir la declaración.
+  # Se cambia a `started` para dejarlo declarado en marcha, que es la otra
+  # opción igual de válida.
+  status: stopped
   manage: true
   cloudinit: false
   description: "MikroTik RouterOS: una funcion de red, un equipo. Gestionado por REST."
